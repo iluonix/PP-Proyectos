@@ -1,350 +1,548 @@
+#shiny::runApp("C:/Users/PC/Documents/GitHub/PP-Proyectos/SISTEMA-RUBRICA")
+
 library(shiny)
 library(shinydashboard)
 library(googlesheets4)
 
 #************************************************************************
-
 #GOOGLE
 
 google_email <- "mi463667@uaeh.edu.mx"
-
 gs4_auth(email = google_email)
 
 
 #************************************************************************
+#ESTUDIANTES
 
-#RUBRIC
-
-#change ts ltr w/actual rubric
-#weights have to add up to 100
-
-rubrica <- data.frame(
-
-  Aspecto = c(
-    rep("Planeacion y planteamiento",3),
-    rep("Desarrollo tecnico",3),
-    rep("Resultados y analisis",3),
-    rep("Comunicacion academica",3),
-    rep("Calidad y documentacion",3)
+alumnos <- data.frame(
+  Equipo = c(
+    rep(1,5),
+    rep(2,4),
+    rep(3,5),
+    rep(4,4),
+    rep(5,4),
+    rep(6,5),
+    rep(7,4),
+    rep(8,3)
   ),
 
-  Criterio = c(
+  Alumno = c(
+    #equipo 1
+    "Cruz Ortiz",
+    "Jimenez Bautista",
+    "Martinez Quintero",
+    "Oaxaca Valdez",
+    "Pacheco Zamora",
 
-    "Definicion clara del problema",
-    "Objetivos y alcance del trabajo",
-    "Metodologia propuesta",
+    #equipo 2
+    "Barajas Longoria",
+    "Bautista Bojorges",
+    "Hernandez Sanchez",
+    "Moreno Badillo",
 
-    "Implementacion de la solucion",
-    "Correctitud tecnica",
-    "Uso de herramientas y recursos",
+    #equipo 3
+    "Cabrera Dorantes",
+    "Hernandez Gonzales",
+    "Rodriguez Torres",
+    "Rojo Lopez",
+    "Torres Hernandez",
 
-    "Presentacion de resultados",
-    "Analisis de resultados",
-    "Validacion de la solucion",
+    #equipo 4
+    "De La Cruz Ventilla",
+    "Noguez Perez",
+    "Perez Moreno",
+    "Reyes Lara",
 
-    "Organizacion de la presentacion",
-    "Defensa oral y dominio del tema",
-    "Recursos visuales y lenguaje academico",
+    #equipo 5
+    "Blancas Gomez",
+    "Hernandez Aguilar",
+    "Nuñez Espinoza",
+    "Velasco Hernandez",
 
-    "Calidad del codigo o producto",
-    "Documentacion, referencias y evidencias",
-    "Presentacion final / reproducibilidad"
+    #equipo 6
+    "Gomez Cruz",
+    "Hernandez Larrieta",
+    "Martinez Gonzalez",
+    "Mendoza Barrera",
+    "Trujillo Ortega",
+
+    #equipo 7
+    "Dominguez Rivera",
+    "Gomez Garcia",
+    "Lopez Jacinto",
+    "Monroy Jimenez",
+
+    #equipo 8
+    "Fonseca Duran",
+    "Mendez Hernandez",
+    "Vila Leonar"
   ),
-
-  Peso = c(
-
-    7,7,6,       # 20
-    9,8,8,       # 25
-    7,7,6,       # 20
-    7,7,6,       # 20
-    5,5,5        # 15
-
-  ),
-
-  stringsAsFactors = FALSE
-)
-
-#comprobante
-if(sum(rubrica$Peso) != 100){
-  stop("La sumatoria de la rúbrica debe ser igual a 100")
-}
-
-
-aspectos <- unique(rubrica$Aspecto)
-
-pesos_aspectos <- sapply(
-  aspectos,
-  function(x){
-    sum(rubrica$Peso[rubrica$Aspecto == x])
-  }
-)
-
-
-
-#empty tables for columns
-
-empty_resumen <- data.frame(
-
-  ID = character(),
-  Fecha = character(),
-  Profesor = character(),
-  Materia_Grupo = character(),
-  Evaluado = character(),
-  Modo = character(),
-
-  Aspecto_1 = numeric(),
-  Aspecto_2 = numeric(),
-  Aspecto_3 = numeric(),
-  Aspecto_4 = numeric(),
-  Aspecto_5 = numeric(),
-
-  Nota_Final = numeric(),
-  Comentarios = character(),
-
-  stringsAsFactors = FALSE
-)
-
-
-empty_detalle <- data.frame(
-
-  ID = character(),
-  Fecha = character(),
-  Profesor = character(),
-  Materia_Grupo = character(),
-  Evaluado = character(),
-  Modo = character(),
-
-  Aspecto = character(),
-  Criterio = character(),
-  Peso = numeric(),
-  Nota = numeric(),
-  Puntaje = numeric(),
-
-  Comentarios = character(),
 
   stringsAsFactors = FALSE
 )
 
 
 #************************************************************************
-# GOOGLE SHEET
+#RUBRICA
 
-#id gets saved here para que no se repita
-google_id_file <- file.path(
-  getwd(),
-  "rubrica_google_sheet_id.txt"
+rubrica <- data.frame(
+  Aspecto = c(
+    "Comprension conceptual",
+
+    "Calidad y funcionamiento del prototipo",
+
+    "Modelo matematico y analisis",
+
+    "Uso de tecnologia y recursos",
+
+    "Comunicacion y trabajo en equipo"
+  ),
+
+  Descripcion = c(
+    "Dominio del principio de conservacion de la energia y su aplicacion al sistema.",
+
+    "Funcionamiento del dispositivo, estabilidad y coherencia con el objetivo.",
+
+    "Relacion entre las ecuaciones teoricas y el comportamiento experimental.",
+
+    "Uso de software, materiales y creatividad en el diseño.",
+
+    "Claridad, organizacion y participacion equilibrada durante la presentacion."
+  ),
+
+
+  Peso = c(
+    25,
+    25,
+    20,
+    20,
+    10
+  ),
+  stringsAsFactors = FALSE
 )
 
 
-google_sheet <- NULL
+#comprobante
+if(sum(rubrica$Peso)!=100){
+  stop(
+    "La suma de la rubrica debe ser igual a 100"
+  )
+}
 
 
-#se reusa si ya existe 
-if(file.exists(google_id_file)){
+#************************************************************************
+#TABLA PARA GUARAR LAS CALIFICACIONES
 
+empty_equipos <- data.frame(
+  ID = character(),
+  Fecha = character(),
+  Profesor = character(),
+  Materia_Grupo = character(),
+  Equipo = integer(),
+  Integrantes = character(),
+
+  Comprension = numeric(),
+  Prototipo = numeric(),
+  Modelo = numeric(),
+  Tecnologia = numeric(),
+  Comunicacion = numeric(),
+
+  Nota_Final = numeric(),
+
+  stringsAsFactors = FALSE
+)
+
+#filas pa los alumnas
+empty_alumnos <- data.frame(
+
+  ID = character(),
+  Fecha = character(),
+  Profesor = character(),
+  Materia_Grupo = character(),
+  Equipo = integer(),
+  Alumno = character(),
+
+  Comprension = numeric(),
+  Prototipo = numeric(),
+  Modelo = numeric(),
+  Tecnologia = numeric(),
+  Comunicacion = numeric(),
+
+  Nota_Final = numeric(),
+
+  stringsAsFactors = FALSE
+)
+
+
+#promedio
+empty_prom_equipos <- data.frame(
+  Equipo = as.character(1:8),
+
+  Promedio = rep(
+    NA_real_,
+    8
+  ),
+  stringsAsFactors = FALSE
+)
+
+#promediar y que no esten vacias
+empty_prom_alumnos <- alumnos
+empty_prom_alumnos$Promedio <- NA_real_
+
+
+#************************************************************************
+
+#GOOGLE SHEET
+
+google_equipos_id_file <- file.path(
+  getwd(),
+  "google_sheet_equipos_id.txt"
+)
+
+google_equipos <- NULL
+
+if(file.exists(google_equipos_id_file)){
   old_id <- readLines(
-    google_id_file,
+    google_equipos_id_file,
+    warn = FALSE
+  )
+
+  if(length(old_id)>0){
+    old_id <- trimws(
+      old_id[1]
+    )
+
+    if(old_id!= ""){
+      google_equipos <- tryCatch({
+        ss <- as_sheets_id(
+          old_id
+        )
+
+        #access
+        gs4_get(
+          ss
+        )
+        ss
+      },error=function(e){
+        NULL
+      })
+    }
+  }
+}
+
+#crear el libro
+if(is.null(google_equipos)){
+  google_equipos <- gs4_create(
+    "Evaluaciones Rubricas UAEH - Equipos",
+    sheets = list(
+
+      Calificaciones_Equipos = empty_equipos,
+      Promedio_Equipos = empty_prom_equipos
+    )
+  )
+
+
+  #save id local
+  writeLines(
+    as.character(
+      google_equipos
+    ),
+    google_equipos_id_file
+  )
+}
+
+#deletes a tab smth
+current_sheets <- sheet_names(
+  google_equipos
+)
+
+
+if(!("Calificaciones_Equipos" %in% current_sheets)){
+  sheet_write(
+    empty_equipos,
+    ss = google_equipos,
+    sheet = "Calificaciones_Equipos"
+  )
+}
+
+
+if(!("Promedio_Equipos" %in% current_sheets)){
+  sheet_write(
+    empty_prom_equipos,
+    ss = google_equipos,
+    sheet = "Promedio_Equipos"
+  )
+}
+
+#************************************************************************
+#GOOGLE SHEET ALUMNOS
+
+google_alumnos_id_file <- file.path(
+  getwd(),
+  "google_sheet_alumnos_id.txt"
+)
+
+google_alumnos <- NULL
+
+if(file.exists(google_alumnos_id_file)){
+  old_id <- readLines(
+    google_alumnos_id_file,
     warn = FALSE
   )
 
   if(length(old_id) > 0){
-
-    old_id <- trimws(old_id[1])
+    old_id <- trimws(
+      old_id[1]
+    )
 
     if(old_id != ""){
-      google_sheet <- tryCatch({
+      google_alumnos <- tryCatch({
+        ss <- as_sheets_id(
+          old_id
+        )
 
-        ss <- as_sheets_id(old_id)
-
-        #access
-        gs4_get(ss)
-
+        gs4_get(
+          ss
+        )
         ss
-
       },error=function(e){
-
         NULL
-
       })
-
     }
-
   }
-
 }
 
-
-
-#crear si no existe
-if(is.null(google_sheet)){
-  google_sheet <- gs4_create(
-
-    "Evaluaciones Rubricas UAEH",
-
+#student book
+if(is.null(google_alumnos)){
+  google_alumnos <- gs4_create(
+    "Evaluaciones Rubricas UAEH - Alumnos",
     sheets = list(
-      Configuracion_Rubrica = rubrica
+
+      Calificaciones_Alumnos = empty_alumnos,
+
+      Promedio_Alumnos = empty_prom_alumnos
     )
   )
 
-
-  #tabsa
-  sheet_write(
-    empty_resumen,
-    ss = google_sheet,
-    sheet = "Resumen_5_Aspectos"
-  )
-
-
-  sheet_write(
-    empty_detalle,
-    ss = google_sheet,
-    sheet = "Rubrica_Completa"
-  )
-
-
-  #id local
   writeLines(
-    as.character(google_sheet),
-    google_id_file
+    as.character(
+      google_alumnos
+    ),
+    google_alumnos_id_file
   )
-
 }
 
-
-
-#por si alguien borra alfo o asi 
-current_sheets <- sheet_names(google_sheet)
-
-
-if(!("Resumen_5_Aspectos" %in% current_sheets)){
-  sheet_write(
-    empty_resumen,
-    ss = google_sheet,
-    sheet = "Resumen_5_Aspectos"
-  )
-
-}
-
-
-if(!("Rubrica_Completa" %in% current_sheets)){
-
-  sheet_write(
-    empty_detalle,
-    ss = google_sheet,
-    sheet = "Rubrica_Completa"
-  )
-
-}
-
-
-#rewrite
-sheet_write(
-  rubrica,
-  ss = google_sheet,
-  sheet = "Configuracion_Rubrica"
+current_sheets <- sheet_names(
+  google_alumnos
 )
 
+if(!("Calificaciones_Alumnos" %in% current_sheets)){
+  
+  sheet_write(
+    empty_alumnos,
+    ss = google_alumnos,
+    sheet = "Calificaciones_Alumnos"
+  )
+}
 
-google_sheet_url <- paste0(
-  "https://docs.google.com/spreadsheets/d/",
-  as.character(google_sheet),
-  "/edit"
-)
+if(!("Promedio_Alumnos" %in% current_sheets)){
 
+  sheet_write(
+
+    empty_prom_alumnos,
+    ss = google_alumnos,
+    sheet = "Promedio_Alumnos"
+  )
+}
 
 #************************************************************************
-#FUNCTIONS
+#FUNCIONES
 
-get_final <- function(notas){
+#la calificación final
+get_final <- function(grado){
+
   sum(
-    notas * rubrica$Peso
+    grado * rubrica$Peso
   ) / 100
 }
 
+#read sheets
+read_old <- function(ss,sheet){
 
-
-get_5 <- function(notas){
-  x <- data.frame(
-    Aspecto = aspectos,
-    Peso = as.numeric(pesos_aspectos),
-    Nota = 0,
-    Aporte = 0
-  )
-
-
-  for(i in 1:length(aspectos)){
-    ids <- which(
-      rubrica$Aspecto == aspectos[i]
-    )
-
-
-    x$Nota[i] <-
-      sum(
-        notas[ids] *
-          rubrica$Peso[ids]
-      ) /
-      sum(
-        rubrica$Peso[ids]
-      )
-
-
-    x$Aporte[i] <-
-      x$Nota[i] *
-      x$Peso[i] /
-      100
-  }
-  x
-}
-
-
-
-#read old evaluations google
-
-read_old <- function(sheet){
   tryCatch({
-    if(!(sheet %in% sheet_names(google_sheet))){
-      return(data.frame())
+    if(!(sheet %in% sheet_names(ss))){
+      return(
+        data.frame()
+      )
     }
 
     x <- read_sheet(
-      google_sheet,
-      sheet = sheet
+      ss,
+      sheet = sheet,
+      show_col_types = FALSE
     )
 
-    as.data.frame(x)
+    as.data.frame(
+      x
+    )
 
   },error=function(e){
     data.frame()
   })
-
 }
 
+#************************************************************************
+
+#PROMEDIOS
+
+#recalculate both average tabs
+actualiza_promedios <- function(){
 
 
-#nueva evaluacion a google
-save_google <- function(detalle,resumen){
+#teams
 
-  sheet_append(
-    google_sheet,
-    resumen,
-    sheet = "Resumen_5_Aspectos"
+  datos_eq <- read_old(
+    google_equipos,
+    "Calificaciones_Equipos"
+  )
+
+  prom_eq <- data.frame(
+    Equipo = as.character(
+      1:8
+    ),
+
+    Promedio = rep(
+      NA_real_,
+      8
+    ),
+
+    stringsAsFactors = FALSE
+  )
+
+  if(nrow(datos_eq) > 0){
+
+    datos_eq$Nota_Final <- suppressWarnings(
+
+      as.numeric(
+        datos_eq$Nota_Final
+      )
+    )
+
+    datos_eq$Equipo <- suppressWarnings(
+      as.integer(
+        datos_eq$Equipo
+      )
+    )
+
+    for(i in 1:8){
+      grado <- datos_eq$Nota_Final[
+        datos_eq$Equipo == i
+      ]
+
+      grado <- grado[
+        !is.na(grado)
+      ]
+
+      if(length(grado) > 0){
+        prom_eq$Promedio[i] <- round(
+          mean(
+            grado
+          ),
+          2
+        )
+      }
+    }
+  }
+
+  #promedio ALL teams
+  general <- mean(
+    prom_eq$Promedio,
+    na.rm = TRUE
+  )
+
+  if(is.nan(general)){
+    general <- NA_real_
+  }
+
+  prom_eq <- rbind(
+    prom_eq,
+    data.frame(
+      Equipo = "PROMEDIO GENERAL",
+
+      Promedio = round(
+        general,
+        2
+      ),
+      stringsAsFactors = FALSE
+    )
   )
 
 
-  sheet_append(
-    google_sheet,
-    detalle,
-    sheet = "Rubrica_Completa"
+  sheet_write(
+    prom_eq,
+
+    ss = google_equipos,
+    sheet = "Promedio_Equipos"
   )
 
+#estudiantes
+  datos_al <- read_old(
+    google_alumnos,
+
+    "Calificaciones_Alumnos"
+  )
+
+  #always start with the complete student list
+  prom_al <- alumnos
+  prom_al$Promedio <- NA_real_
+
+  if(nrow(datos_al) > 0){
+    datos_al$Nota_Final <- suppressWarnings(
+      as.numeric(
+        datos_al$Nota_Final
+      )
+    )
+
+    for(i in 1:nrow(prom_al)){
+      estudiante <- prom_al$Alumno[i]
+
+      grado <- datos_al$Nota_Final[
+        trimws(
+          datos_al$Alumno
+        ) == trimws(
+          estudiante
+        )
+      ]
+
+      grado <- grado[
+        !is.na(grado)
+      ]
+
+      if(length(grado) > 0){
+
+        prom_al$Promedio[i] <- round(
+          mean(
+            grado
+          ),
+          2
+        )
+      }
+    }
+  }
+
+  sheet_write(
+    prom_al,
+    ss = google_alumnos,
+    sheet = "Promedio_Alumnos"
+  )
 }
 
+actualiza_promedios()
 
 #************************************************************************
 #UI
 
 ui <- dashboardPage(
-
   skin = "blue",
 
   dashboardHeader(
@@ -352,40 +550,28 @@ ui <- dashboardPage(
   ),
 
   dashboardSidebar(
-
     sidebarMenu(
       menuItem(
-        "Panel de Evaluacion",
+
+        "Evaluar Equipo",
         tabName = "evaluacion",
-        icon = icon("calculator")
-      ),
-
-      menuItem(
-        "Consolidado General",
-        tabName = "consolidado",
-        icon = icon("table")
-      ),
-
-      menuItem(
-        "Rubrica Completa",
-        tabName = "completa",
-        icon = icon("list")
+        icon = icon("users")
       )
     )
   ),
 
-
   dashboardBody(
-
     tabItems(
-      #tab
       tabItem(
         tabName = "evaluacion",
         fluidRow(
           box(
             title = "Datos de Evaluacion",
+
             status = "primary",
+
             solidHeader = TRUE,
+
             width = 4,
 
             textInput(
@@ -398,156 +584,81 @@ ui <- dashboardPage(
               "Materia / grupo:"
             ),
 
-            textInput(
-              "evaluado",
-              "Alumno, equipo o proyecto:"
-            ),
+            selectInput(
+              "equipo",
+              "Equipo:",
 
-            radioButtons(
-              "modo",
-              "Forma de evaluar:",
+              choices = setNames(
+                as.character(
+                  1:8
+                ),
 
-              choices = c(
-                "Solo 5 aspectos" = "cinco",
-                "Rubrica completa" = "completa"
+                paste(
+                  "Equipo",
+                  1:8
+                )
               ),
-
-              selected = "cinco"
+              selected = "1"
             ),
+            hr(),
 
-
-            p(
-              tags$small(
-                "If you use 5 aspects, that score gets copied to the detailed rubric points inside that aspect."
-              )
+            #estudiantes segun equipo
+            uiOutput(
+              "integrantes_ui"
             ),
-
-
-            textAreaInput(
-              "comentarios",
-              "Comentarios / observaciones:",
-              rows = 4
-            ),
-
-
-            actionButton(
-              "guardar",
-              "Guardar Evaluacion",
-              icon = icon("save"),
-              class = "btn-success"
-            ),
-
-
-            br(),
-            br(),
-
-
-            tags$a(
-              href = google_sheet_url,
-              target = "_blank",
-              class = "btn btn-primary",
-
-              icon("table"),
-              " Abrir Google Sheets"
-            ),
-
 
             hr(),
 
-
             tags$small(
-              paste(
-                "Google account:",
-                google_email
-              )
-            )
-
-          ),
-
-
-
-          box(
-            title = "Ingreso de Notas (0 - 100)",
-            status = "warning",
-            solidHeader = TRUE,
-            width = 8,
-
-            uiOutput("inputs_notas")
-          )
-        ),
-
-
-
-        fluidRow(
-          box(
-            title = "Resumen de 5 Aspectos",
-            status = "info",
-            solidHeader = TRUE,
-            width = 5,
-
-            tableOutput("preview5"),
-
-            h3(
-              align = "right",
-              textOutput("preview_total")
-            )
-          ),
-
-
-          box(
-            title = "Rubrica Completa",
-            status = "info",
-            solidHeader = TRUE,
-            width = 7,
-
-            tableOutput("preview_completa")
-          )
-        )
-      ),
-
-
-
-      #resumen
-      tabItem(
-
-        tabName = "consolidado",
-        fluidRow(
-
-          box(
-            title = "Evaluaciones Guardadas",
-            status = "primary",
-            solidHeader = TRUE,
-            width = 12,
-
-            actionButton(
-              "actualizar",
-              "Actualizar desde Google Sheets",
-              icon = icon("refresh")
+              "Todos los estudiantes seleccionados tendrán la misma calificación"
             ),
 
             br(),
             br(),
-            tableOutput("tabla_resumen")
+
+            actionButton(
+
+              "guardar",
+              "Enviar Calificaciones",
+
+              icon = icon("paper-plane"),
+              class = "btn-success"
+            )
+          ),
+
+          box(
+            title = "Rubrica",
+            status = "warning",
+
+            solidHeader = TRUE,
+            width = 8,
+
+            uiOutput(
+              "inputs_grado"
+            )
           )
-        )
-      ),
-
-
-
-      #historial completo
-      tabItem(
-
-        tabName = "completa",
+        ),
 
         fluidRow(
+          
           box(
-            title = "Historial de Todos los Criterios",
-            status = "primary",
+
+            title = "Resultado",
+            status = "info",
             solidHeader = TRUE,
             width = 12,
 
-            tableOutput("tabla_detalle")
+            tableOutput(
+              "preview"
+            ),
 
+            h3(
+              align = "right",
+
+              textOutput(
+                "preview_total"
+              )
+            )
           )
         )
       )
@@ -561,232 +672,159 @@ ui <- dashboardPage(
 
 server <- function(input,output,session){
 
-  #valores de sheets
-  valores <- reactiveValues(
+  #TEAM STUDENTS
+  output$integrantes_ui <- renderUI({
 
-    resumen = read_old(
-      "Resumen_5_Aspectos"
-    ),
-
-    detalle = read_old(
-      "Rubrica_Completa"
+    req(
+      input$equipo
     )
 
-  )
+    equipo_actual <- as.integer(
+      input$equipo
+    )
 
-  #decide 5 inputs or  whole 
-  output$inputs_notas <- renderUI({
+    miembros <- alumnos$Alumno[
+      alumnos$Equipo == equipo_actual
+    ]
 
-    if(input$modo == "cinco"){
-      cosas <- list()
+    checkboxGroupInput(
+      "integrantes",
+      "Integrantes del equipo:",
+      choices = miembros,
+      selected = miembros
+    )
+  })
 
-      for(i in 1:length(aspectos)){
+  #************************************************************************
+  #RUBRICA 
 
-        cosas[[i]] <- div(
+  #nomas 5 
+  output$inputs_grado <- renderUI({
 
-          h4(
-            paste0(
-              i,
-              ". ",
-              aspectos[i],
-              " (",
-              pesos_aspectos[i],
-              "%)"
-            )
-          ),
+    cosas <- list()
 
-          numericInput(
-
-            paste0(
-              "aspecto",
-              i
-            ),
-
-            "Calificacion:",
-
-            100,
-
-            min = 0,
-            max = 100,
-            step = 1
-          ),
-
-
-          tags$small(
-            paste(
-
-              "Includes",
-              sum(
-                rubrica$Aspecto == aspectos[i]
-              ),
-              "rubric points"
-            )
-          ),
-
-
-          hr()
-        )
-      }
-
-      do.call(
-        tagList,
-        cosas
-      )
-
-    }else{
-      cosas <- list()
-
-      for(i in 1:nrow(rubrica)){
-        # add the aspect title before its criteria
-        if(
-          i == 1 ||
-          rubrica$Aspecto[i] != rubrica$Aspecto[i-1]
-        ){
-
-          cosas[[length(cosas)+1]] <- h4(
-
-            paste0(
-
-              rubrica$Aspecto[i],
-              " (",
-              pesos_aspectos[
-                rubrica$Aspecto[i]
-              ],
-              "%)"
-
-            )
-          )
-        }
-
-
-
-        cosas[[length(cosas)+1]] <- numericInput(
-
+    for(i in 1:nrow(rubrica)){
+      cosas[[i]] <- div(
+        h4(
           paste0(
-            "criterio",
+            i,
+            ". ",
+            rubrica$Aspecto[i],
+            " (",
+            rubrica$Peso[i],
+            "%)"
+          )
+        ),
+
+        tags$small(
+          rubrica$Descripcion[i]
+        ),
+
+        br(),
+        br(),
+
+        numericInput(
+          paste0(
+            "aspecto",
             i
           ),
 
-          paste0(
-
-            rubrica$Criterio[i],
-            " [",
-            rubrica$Peso[i],
-            "%]"
-
-          ),
-
-          100,
-
+          "Calificacion:",
+          value = 10,
           min = 0,
-          max = 100,
-          step = 1
+          max = 10,
+          step = 0.5
+        ),
 
-        )
-      }
-
-
-      do.call(
-        tagList,
-        cosas
+        hr()
       )
     }
+
+    do.call(
+      tagList,
+      cosas
+    )
   })
 
+  #************************************************************************
+  #grado ACRTUALES
 
-
-  #para convertir a los 15
-  notas_actuales <- reactive({
-
-    notas <- rep(
-      100,
+  grado_actual <- reactive({
+    grado <- rep(
+      10, 
       nrow(rubrica)
     )
 
-    if(input$modo == "cinco"){
+    for(i in 1:nrow(rubrica)){
+      n <- input[[
+        paste0(
+          "aspecto",
+          i
+        )
+      ]]
 
-      for(i in 1:length(aspectos)){
-        n <- input[[paste0("aspecto",i)]]
-
-        if(is.null(n)){
-          n <- 100
-        }
-
-
-        notas[
-          rubrica$Aspecto == aspectos[i]
-        ] <- n
-
+      if(is.null(n)){
+        n <- 10
       }
-
-
-    }else{
-      for(i in 1:nrow(rubrica)){
-        n <- input[[paste0("criterio",i)]]
-        if(is.null(n)){
-          n <- 100
-        }
-        notas[i] <- n
-      }
+      grado[i] <- n
     }
-    notas
+    grado
   })
 
+  #************************************************************************
+  #PREVIEW
 
+  output$preview <- renderTable({
+    grado <- grado_actual()
+    data.frame(
+      Aspecto = rubrica$Aspecto,
 
-  #preview
-  output$preview5 <- renderTable({
+      `Peso (%)` = rubrica$Peso,
 
+      Calificacion = grado,
 
-    x <- get_5(
-      notas_actuales()
+      Aporte = round(
+        grado *
+        rubrica$Peso /
+        100,
+        2
+
+      ),
+
+      check.names = FALSE
+
     )
 
-    names(x) <- c(
-      "Aspecto",
-      "Peso (%)",
-      "Nota",
-      "Aporte Final"
-    )
-
-    x
 
   },digits = 2)
 
-  #finakl
+
+
   output$preview_total <- renderText({
+
+
     paste(
 
       "Calificacion Final:",
 
       formatC(
+
         get_final(
-          notas_actuales()
+          grado_actual()
         ),
+
         format = "f",
-        digits = 1
+
+        digits = 2
+
       ),
 
-      "/ 100"
+      "/ 10"
+
     )
+
   })
 
-
-
-  #preview completa
-  output$preview_completa <- renderTable({
-
-
-    data.frame(
-      Aspecto = rubrica$Aspecto,
-      Criterio = rubrica$Criterio,
-      `Peso (%)` = rubrica$Peso,
-      Nota = notas_actuales(),
-      check.names = FALSE
-    )
-
-
-  },digits = 1)
 
 
 #************************************************************************
@@ -794,101 +832,151 @@ server <- function(input,output,session){
 
   observeEvent(input$guardar,{
 
-    if(
-      trimws(input$profesor) == "" ||
-      trimws(input$evaluado) == ""
-    ){
+
+    #basic checks
+    if(trimws(input$profesor) == ""){
+
       showNotification(
-        "Falta profesor o alumno/equipo.",
+
+        "Falta el profesor evaluador.",
+
         type = "error"
+
       )
+
       return()
+
     }
 
-    notas <- notas_actuales()
+
+    if(trimws(input$materia) == ""){
+
+      showNotification(
+
+        "Falta la materia o grupo.",
+
+        type = "error"
+
+      )
+
+      return()
+
+    }
+
 
     if(
+      is.null(input$integrantes) ||
+      length(input$integrantes) == 0
+    ){
+
+      showNotification(
+
+        "Selecciona al menos un integrante.",
+
+        type = "error"
+
+      )
+
+      return()
+
+    }
+
+
+
+    grado <- grado_actual()
+
+
+    if(
+
       any(
-        notas < 0 |
-        notas > 100 |
-        is.na(notas)
+
+        grado < 0 |
+        grado > 10 |
+        is.na(grado)
+
       )
+
     ){
 
       showNotification(
-        "Las notas deben estar entre 0 y 100.",
+
+        "Las grado deben estar entre 0 y 10.",
+
         type = "error"
+
       )
+
       return()
+
     }
 
+
+
+    #id for this evaluation
     id <- paste0(
 
       format(
+
         Sys.time(),
+
         "%Y%m%d%H%M%S"
+
       ),
 
       "_",
 
       sample(
+
         100:999,
+
         1
+
       )
+
     )
 
 
 
     fecha <- format(
+
       Sys.time(),
+
       "%Y-%m-%d %H:%M:%S"
+
     )
 
-    modo_txt <- if(
-      input$modo == "cinco"
-    ){
-      "5 aspectos"
-    }else{
-      "rubrica completa"
-    }
 
-    r5 <- get_5(
-      notas
+
+    equipo_actual <- as.integer(
+      input$equipo
     )
 
-    #rows
-    nuevo_detalle <- data.frame(
+
+    miembros <- input$integrantes
+
+
+    nota_final <- round(
+
+      get_final(
+        grado
+      ),
+
+      2
+
+    )
+
+
+
+    #************************************************************************
+    #TEAM ROW
+
+    #only ONE row goes to the team book
+    nuevo_equipo <- data.frame(
 
       ID = id,
+
       Fecha = fecha,
-      Profesor = trimws(
-        input$profesor
-      ),
-      Materia_Grupo = trimws(
-        input$materia
-      ),
-      Evaluado = trimws(
-        input$evaluado
-      ),
 
-      Modo = modo_txt,
-      Aspecto = rubrica$Aspecto,
-      Criterio = rubrica$Criterio,
-      Peso = rubrica$Peso,
-      Nota = notas,
-      Puntaje =
-        notas *
-        rubrica$Peso /
-        100,
-      Comentarios = input$comentarios,
-      stringsAsFactors = FALSE
-    )
-
-
-
-    nuevo_resumen <- data.frame(
-      ID = id,
-      Fecha = fecha,
       Profesor = trimws(
         input$profesor
       ),
@@ -897,163 +985,208 @@ server <- function(input,output,session){
         input$materia
       ),
 
-      Evaluado = trimws(
-        input$evaluado
-      ),
-      Modo = modo_txt,
+      Equipo = equipo_actual,
 
-      Aspecto_1 = round(
-        r5$Nota[1],
-        2
-      ),
+      Integrantes = paste(
 
-      Aspecto_2 = round(
-        r5$Nota[2],
-        2
+        miembros,
+
+        collapse = ", "
+
       ),
 
-      Aspecto_3 = round(
-        r5$Nota[3],
-        2
-      ),
+      Comprension = grado[1],
 
-      Aspecto_4 = round(
-        r5$Nota[4],
-        2
-      ),
+      Prototipo = grado[2],
 
-      Aspecto_5 = round(
-        r5$Nota[5],
-        2
-      ),
+      Modelo = grado[3],
 
-      Nota_Final = round(
-        get_final(notas),
-        2
-      ),
+      Tecnologia = grado[4],
 
-      Comentarios = input$comentarios,
+      Comunicacion = grado[5],
+
+      Nota_Final = nota_final,
+
       stringsAsFactors = FALSE
 
     )
 
 
 
-    #envia a google sheets
+    #************************************************************************
+    #STUDENT ROWS
+
+    #every selected student gets the SAME grades
+    nuevos_alumnos <- data.frame(
+
+      ID = rep(
+        id,
+        length(miembros)
+      ),
+
+      Fecha = rep(
+        fecha,
+        length(miembros)
+      ),
+
+      Profesor = rep(
+
+        trimws(
+          input$profesor
+        ),
+
+        length(miembros)
+
+      ),
+
+      Materia_Grupo = rep(
+
+        trimws(
+          input$materia
+        ),
+
+        length(miembros)
+
+      ),
+
+      Equipo = rep(
+
+        equipo_actual,
+
+        length(miembros)
+
+      ),
+
+      Alumno = miembros,
+
+      Comprension = rep(
+        grado[1],
+        length(miembros)
+      ),
+
+      Prototipo = rep(
+        grado[2],
+        length(miembros)
+      ),
+
+      Modelo = rep(
+        grado[3],
+        length(miembros)
+      ),
+
+      Tecnologia = rep(
+        grado[4],
+        length(miembros)
+      ),
+
+      Comunicacion = rep(
+        grado[5],
+        length(miembros)
+      ),
+
+      Nota_Final = rep(
+        nota_final,
+        length(miembros)
+      ),
+
+      stringsAsFactors = FALSE
+
+    )
+
+
+
+    #************************************************************************
+    #SEND TO GOOGLE
+
     resultado <- tryCatch({
 
-      save_google(
-        nuevo_detalle,
-        nuevo_resumen
+
+      #one grade per team
+      sheet_append(
+
+        google_equipos,
+
+        nuevo_equipo,
+
+        sheet = "Calificaciones_Equipos"
+
       )
+
+
+      #same grade repeated for every selected student
+      sheet_append(
+
+        google_alumnos,
+
+        nuevos_alumnos,
+
+        sheet = "Calificaciones_Alumnos"
+
+      )
+
+
+      #recalculate averages after saving
+      actualiza_promedios()
+
 
       TRUE
 
+
     },error=function(e){
+
 
       showNotification(
 
         paste(
+
           "Google Sheets error:",
+
           e$message
+
         ),
+
         type = "error",
+
         duration = 10
+
       )
+
+
       FALSE
+
     })
 
+
+
     if(!resultado){
+
       return()
+
     }
 
-    # keep local copy updated too
-    if(nrow(valores$detalle) == 0){
-      valores$detalle <- nuevo_detalle
-    }else{
-      valores$detalle <- rbind(
-        valores$detalle,
-        nuevo_detalle
-      )
-    }
 
-    if(nrow(valores$resumen) == 0){
-      valores$resumen <- nuevo_resumen
-    }else{
-      valores$resumen <- rbind(
-        valores$resumen,
-        nuevo_resumen
-      )
-    }
 
     showNotification(
-      "Evaluacion guardada en Google Sheets.",
+
+      paste0(
+
+        "Calificacion enviada. Equipo ",
+        equipo_actual,
+        ": ",
+        nota_final
+
+      ),
+
       type = "message",
-      duration = 5
-    )
-  })
 
-  #reload
-  observeEvent(input$actualizar,{
-    valores$resumen <- read_old(
-      "Resumen_5_Aspectos"
-    )
+      duration = 6
 
-    valores$detalle <- read_old(
-      "Rubrica_Completa"
-    )
-
-    showNotification(
-      "Datos actualizados desde Google Sheets.",
-      type = "message"
     )
 
   })
 
-
-#************************************************************************
-  #SUMMARY TABLE
-
-  output$tabla_resumen <- renderTable({
-
-    if(nrow(valores$resumen) == 0){
-      return(
-        data.frame(
-          Mensaje = "No hay evaluaciones guardadas todavia."
-        )
-      )
-    }
-
-
-    tail(
-      valores$resumen,
-      30
-    )
-
-  },digits = 2)
-
-
-#************************************************************************
-
-  #TABLA COMPLETA
-
-  output$tabla_detalle <- renderTable({
-
-    if(nrow(valores$detalle) == 0){
-      return(
-        data.frame(
-          Mensaje = "No hay evaluaciones guardadas todavia."
-        )
-      )
-    }
-
-    tail(
-      valores$detalle,
-      100
-    )
-
-  },digits = 2)
 }
+
 
 shinyApp(
   ui,
