@@ -10,7 +10,6 @@ library(googlesheets4)
 google_email <- "mi463667@uaeh.edu.mx"
 gs4_auth(email = google_email)
 
-
 #************************************************************************
 #ESTUDIANTES
 
@@ -77,10 +76,8 @@ alumnos <- data.frame(
     "Mendez Hernandez",
     "Vila Leonar"
   ),
-
   stringsAsFactors = FALSE
 )
-
 
 #************************************************************************
 #RUBRICA
@@ -110,7 +107,6 @@ rubrica <- data.frame(
     "Claridad, organizacion y participacion equilibrada durante la presentacion."
   ),
 
-
   Peso = c(
     25,
     25,
@@ -118,9 +114,9 @@ rubrica <- data.frame(
     20,
     10
   ),
+
   stringsAsFactors = FALSE
 )
-
 
 #comprobante
 if(sum(rubrica$Peso)!=100){
@@ -129,9 +125,8 @@ if(sum(rubrica$Peso)!=100){
   )
 }
 
-
 #************************************************************************
-#TABLA PARA GUARAR LAS CALIFICACIONES
+#TABLAS VACIAS
 
 empty_equipos <- data.frame(
   ID = character(),
@@ -152,9 +147,9 @@ empty_equipos <- data.frame(
   stringsAsFactors = FALSE
 )
 
-#filas pa los alumnas
-empty_alumnos <- data.frame(
 
+#filas pa los alumnos
+empty_alumnos <- data.frame(
   ID = character(),
   Fecha = character(),
   Profesor = character(),
@@ -173,8 +168,7 @@ empty_alumnos <- data.frame(
   stringsAsFactors = FALSE
 )
 
-
-#promedio
+#promedio equipos
 empty_prom_equipos <- data.frame(
   Equipo = as.character(1:8),
 
@@ -182,17 +176,16 @@ empty_prom_equipos <- data.frame(
     NA_real_,
     8
   ),
+
   stringsAsFactors = FALSE
 )
 
-#promediar y que no esten vacias
+#todos los alumnos aunque no tengan calif
 empty_prom_alumnos <- alumnos
 empty_prom_alumnos$Promedio <- NA_real_
 
-
 #************************************************************************
-
-#GOOGLE SHEET
+#GOOGLE SHEET EQUIPOS
 
 google_equipos_id_file <- file.path(
   getwd(),
@@ -200,6 +193,7 @@ google_equipos_id_file <- file.path(
 )
 
 google_equipos <- NULL
+
 
 if(file.exists(google_equipos_id_file)){
   old_id <- readLines(
@@ -212,7 +206,7 @@ if(file.exists(google_equipos_id_file)){
       old_id[1]
     )
 
-    if(old_id!= ""){
+    if(old_id!=""){
       google_equipos <- tryCatch({
         ss <- as_sheets_id(
           old_id
@@ -222,7 +216,9 @@ if(file.exists(google_equipos_id_file)){
         gs4_get(
           ss
         )
+
         ss
+
       },error=function(e){
         NULL
       })
@@ -230,19 +226,18 @@ if(file.exists(google_equipos_id_file)){
   }
 }
 
-#crear el libro
+#crear libro equipo
 if(is.null(google_equipos)){
   google_equipos <- gs4_create(
     "Evaluaciones Rubricas UAEH - Equipos",
-    sheets = list(
 
+    sheets = list(
       Calificaciones_Equipos = empty_equipos,
       Promedio_Equipos = empty_prom_equipos
     )
   )
 
-
-  #save id local
+  #save id
   writeLines(
     as.character(
       google_equipos
@@ -251,11 +246,10 @@ if(is.null(google_equipos)){
   )
 }
 
-#deletes a tab smth
+#por si alguien borra algo
 current_sheets <- sheet_names(
   google_equipos
 )
-
 
 if(!("Calificaciones_Equipos" %in% current_sheets)){
   sheet_write(
@@ -264,7 +258,6 @@ if(!("Calificaciones_Equipos" %in% current_sheets)){
     sheet = "Calificaciones_Equipos"
   )
 }
-
 
 if(!("Promedio_Equipos" %in% current_sheets)){
   sheet_write(
@@ -290,12 +283,12 @@ if(file.exists(google_alumnos_id_file)){
     warn = FALSE
   )
 
-  if(length(old_id) > 0){
+  if(length(old_id)>0){
     old_id <- trimws(
       old_id[1]
     )
 
-    if(old_id != ""){
+    if(old_id!=""){
       google_alumnos <- tryCatch({
         ss <- as_sheets_id(
           old_id
@@ -304,7 +297,9 @@ if(file.exists(google_alumnos_id_file)){
         gs4_get(
           ss
         )
+
         ss
+
       },error=function(e){
         NULL
       })
@@ -316,10 +311,9 @@ if(file.exists(google_alumnos_id_file)){
 if(is.null(google_alumnos)){
   google_alumnos <- gs4_create(
     "Evaluaciones Rubricas UAEH - Alumnos",
+
     sheets = list(
-
       Calificaciones_Alumnos = empty_alumnos,
-
       Promedio_Alumnos = empty_prom_alumnos
     )
   )
@@ -337,7 +331,6 @@ current_sheets <- sheet_names(
 )
 
 if(!("Calificaciones_Alumnos" %in% current_sheets)){
-  
   sheet_write(
     empty_alumnos,
     ss = google_alumnos,
@@ -346,9 +339,7 @@ if(!("Calificaciones_Alumnos" %in% current_sheets)){
 }
 
 if(!("Promedio_Alumnos" %in% current_sheets)){
-
   sheet_write(
-
     empty_prom_alumnos,
     ss = google_alumnos,
     sheet = "Promedio_Alumnos"
@@ -358,9 +349,8 @@ if(!("Promedio_Alumnos" %in% current_sheets)){
 #************************************************************************
 #FUNCIONES
 
-#la calificación final
+#calif final
 get_final <- function(grado){
-
   sum(
     grado * rubrica$Peso
   ) / 100
@@ -392,37 +382,34 @@ read_old <- function(ss,sheet){
 }
 
 #************************************************************************
-
 #PROMEDIOS
+#mandar los datos directo
+actualiza_promedios <- function(datos_eq=NULL,datos_al=NULL){
 
-#recalculate both average tabs
-actualiza_promedios <- function(){
+########################################################################
+  #EQUIPOS
 
-
-#teams
-
-  datos_eq <- read_old(
-    google_equipos,
-    "Calificaciones_Equipos"
-  )
+  if(is.null(datos_eq)){
+    datos_eq <- read_old(
+      google_equipos,
+      "Calificaciones_Equipos"
+    )
+  }
 
   prom_eq <- data.frame(
     Equipo = as.character(
       1:8
     ),
-
     Promedio = rep(
       NA_real_,
       8
     ),
-
     stringsAsFactors = FALSE
   )
 
-  if(nrow(datos_eq) > 0){
 
+  if(nrow(datos_eq)>0){
     datos_eq$Nota_Final <- suppressWarnings(
-
       as.numeric(
         datos_eq$Nota_Final
       )
@@ -443,7 +430,7 @@ actualiza_promedios <- function(){
         !is.na(grado)
       ]
 
-      if(length(grado) > 0){
+      if(length(grado)>0){
         prom_eq$Promedio[i] <- round(
           mean(
             grado
@@ -454,49 +441,52 @@ actualiza_promedios <- function(){
     }
   }
 
-  #promedio ALL teams
-  general <- mean(
+  #promedio de todos los equipos
+  general_eq <- mean(
     prom_eq$Promedio,
     na.rm = TRUE
   )
 
-  if(is.nan(general)){
-    general <- NA_real_
+  if(is.nan(general_eq)){
+    general_eq <- NA_real_
   }
 
   prom_eq <- rbind(
     prom_eq,
+
     data.frame(
       Equipo = "PROMEDIO GENERAL",
 
       Promedio = round(
-        general,
+        general_eq,
         2
       ),
       stringsAsFactors = FALSE
     )
   )
 
-
+  #rewrite la tab
   sheet_write(
     prom_eq,
-
     ss = google_equipos,
     sheet = "Promedio_Equipos"
   )
 
-#estudiantes
-  datos_al <- read_old(
-    google_alumnos,
+########################################################################
+  #ALUMNOS
 
-    "Calificaciones_Alumnos"
-  )
+  if(is.null(datos_al)){
+    datos_al <- read_old(
+      google_alumnos,
+      "Calificaciones_Alumnos"
+    )
+  }
 
-  #always start with the complete student list
+  #empieza con todos aunque no tengan nada
   prom_al <- alumnos
   prom_al$Promedio <- NA_real_
 
-  if(nrow(datos_al) > 0){
+  if(nrow(datos_al)>0){
     datos_al$Nota_Final <- suppressWarnings(
       as.numeric(
         datos_al$Nota_Final
@@ -504,6 +494,7 @@ actualiza_promedios <- function(){
     )
 
     for(i in 1:nrow(prom_al)){
+
       estudiante <- prom_al$Alumno[i]
 
       grado <- datos_al$Nota_Final[
@@ -518,7 +509,7 @@ actualiza_promedios <- function(){
         !is.na(grado)
       ]
 
-      if(length(grado) > 0){
+      if(length(grado)>0){
 
         prom_al$Promedio[i] <- round(
           mean(
@@ -530,14 +521,45 @@ actualiza_promedios <- function(){
     }
   }
 
+  #promedio DE TODOS los estudiantes que ya tengan calificacion
+  general_al <- mean(
+    prom_al$Promedio,
+    na.rm = TRUE
+  )
+
+  if(is.nan(general_al)){
+    general_al <- NA_real_
+  }
+
+  #row final
+  prom_al <- rbind(
+    prom_al,
+
+    data.frame(
+      Equipo = NA,
+      Alumno = "PROMEDIO GENERAL",
+
+      Promedio = round(
+        general_al,
+        2
+      ),
+
+      stringsAsFactors = FALSE
+    )
+  )
+
   sheet_write(
     prom_al,
     ss = google_alumnos,
     sheet = "Promedio_Alumnos"
   )
-}
 
-actualiza_promedios()
+
+  list(
+    equipos = prom_eq,
+    alumnos = prom_al
+  )
+}
 
 #************************************************************************
 #UI
@@ -551,27 +573,36 @@ ui <- dashboardPage(
 
   dashboardSidebar(
     sidebarMenu(
-      menuItem(
 
+      menuItem(
         "Evaluar Equipo",
         tabName = "evaluacion",
         icon = icon("users")
+      ),
+
+      menuItem(
+        "Resultados",
+        tabName = "resultados",
+        icon = icon("bar-chart")
       )
     )
   ),
 
   dashboardBody(
     tabItems(
+
+      ######################################################################
+      #EVALUACION
+
       tabItem(
         tabName = "evaluacion",
+
         fluidRow(
+
           box(
             title = "Datos de Evaluacion",
-
             status = "primary",
-
             solidHeader = TRUE,
-
             width = 4,
 
             textInput(
@@ -598,8 +629,10 @@ ui <- dashboardPage(
                   1:8
                 )
               ),
+
               selected = "1"
             ),
+
             hr(),
 
             #estudiantes segun equipo
@@ -617,7 +650,6 @@ ui <- dashboardPage(
             br(),
 
             actionButton(
-
               "guardar",
               "Enviar Calificaciones",
 
@@ -625,6 +657,7 @@ ui <- dashboardPage(
               class = "btn-success"
             )
           ),
+
 
           box(
             title = "Rubrica",
@@ -639,10 +672,10 @@ ui <- dashboardPage(
           )
         ),
 
-        fluidRow(
-          
-          box(
 
+        fluidRow(
+
+          box(
             title = "Resultado",
             status = "info",
             solidHeader = TRUE,
@@ -661,6 +694,75 @@ ui <- dashboardPage(
             )
           )
         )
+      ),
+
+      ######################################################################
+      #RESULTADOS
+
+      tabItem(
+        tabName = "resultados",
+
+        fluidRow(
+
+          box(
+            title = "Promedios",
+            status = "primary",
+            solidHeader = TRUE,
+            width = 4,
+
+            h4(
+              "Promedio general"
+            ),
+
+            h2(
+              textOutput(
+                "promedio_general"
+              )
+            ),
+
+            hr(),
+
+            selectInput(
+              "tipo_grafica",
+              "Mostrar grafica de:",
+
+              choices = c(
+                "Equipos" = "equipos",
+                "Alumnos" = "alumnos"
+              ),
+
+              selected = "equipos"
+            )
+          ),
+
+
+          box(
+            title = "Grafica de Calificaciones",
+            status = "info",
+            solidHeader = TRUE,
+            width = 8,
+
+            plotOutput(
+              "grafica",
+              height = "450px"
+            )
+          )
+        ),
+
+
+        fluidRow(
+
+          box(
+            title = "Promedio por Equipo",
+            status = "success",
+            solidHeader = TRUE,
+            width = 12,
+
+            tableOutput(
+              "tabla_promedios"
+            )
+          )
+        )
       )
     )
   )
@@ -672,7 +774,38 @@ ui <- dashboardPage(
 
 server <- function(input,output,session){
 
-  #TEAM STUDENTS
+#************************************************************************
+#DATOS GUARDADOS
+
+  #leer primero normal antes de hacerlo reactive
+  datos_equipos_inicio <- read_old(
+    google_equipos,
+    "Calificaciones_Equipos"
+  )
+
+  datos_alumnos_inicio <- read_old(
+    google_alumnos,
+    "Calificaciones_Alumnos"
+  )
+
+  inicio <- actualiza_promedios(
+    datos_equipos_inicio,
+    datos_alumnos_inicio
+  )
+
+  #reactive
+  guardados <- reactiveValues(
+    equipos = datos_equipos_inicio,
+
+    alumnos = datos_alumnos_inicio,
+
+    prom_equipos = inicio$equipos,
+
+    prom_alumnos = inicio$alumnos
+  )
+
+#************************************************************************
+
   output$integrantes_ui <- renderUI({
 
     req(
@@ -695,10 +828,11 @@ server <- function(input,output,session){
     )
   })
 
-  #************************************************************************
-  #RUBRICA 
 
-  #nomas 5 
+#************************************************************************
+#RUBRICA
+
+  #nomas 5
   output$inputs_grado <- renderUI({
 
     cosas <- list()
@@ -730,6 +864,7 @@ server <- function(input,output,session){
           ),
 
           "Calificacion:",
+
           value = 10,
           min = 0,
           max = 10,
@@ -746,14 +881,17 @@ server <- function(input,output,session){
     )
   })
 
+
   #************************************************************************
-  #grado ACRTUALES
+  #GRADOS ACTUALES
 
   grado_actual <- reactive({
+
     grado <- rep(
-      10, 
+      10,
       nrow(rubrica)
     )
+
 
     for(i in 1:nrow(rubrica)){
       n <- input[[
@@ -766,8 +904,10 @@ server <- function(input,output,session){
       if(is.null(n)){
         n <- 10
       }
+
       grado[i] <- n
     }
+
     grado
   })
 
@@ -775,206 +915,135 @@ server <- function(input,output,session){
   #PREVIEW
 
   output$preview <- renderTable({
+
     grado <- grado_actual()
+
     data.frame(
       Aspecto = rubrica$Aspecto,
-
       `Peso (%)` = rubrica$Peso,
-
       Calificacion = grado,
-
       Aporte = round(
         grado *
         rubrica$Peso /
         100,
         2
-
       ),
 
       check.names = FALSE
-
     )
-
 
   },digits = 2)
 
-
-
   output$preview_total <- renderText({
-
-
     paste(
-
       "Calificacion Final:",
 
       formatC(
-
         get_final(
           grado_actual()
         ),
 
         format = "f",
-
         digits = 2
-
       ),
 
       "/ 10"
-
     )
-
   })
-
-
 
 #************************************************************************
 #SAVE
-
   observeEvent(input$guardar,{
 
-
-    #basic checks
-    if(trimws(input$profesor) == ""){
-
+    if(trimws(input$profesor)==""){
       showNotification(
-
         "Falta el profesor evaluador.",
-
         type = "error"
-
       )
-
       return()
-
     }
 
 
-    if(trimws(input$materia) == ""){
-
+    if(trimws(input$materia)==""){
       showNotification(
-
         "Falta la materia o grupo.",
-
         type = "error"
-
       )
-
       return()
-
     }
 
 
     if(
       is.null(input$integrantes) ||
-      length(input$integrantes) == 0
+      length(input$integrantes)==0
     ){
 
       showNotification(
-
         "Selecciona al menos un integrante.",
-
         type = "error"
-
       )
 
       return()
-
     }
-
-
 
     grado <- grado_actual()
 
-
     if(
-
       any(
-
         grado < 0 |
         grado > 10 |
         is.na(grado)
-
       )
-
     ){
 
       showNotification(
-
-        "Las grado deben estar entre 0 y 10.",
-
+        "El grado debe estar entre 0 y 10.",
         type = "error"
-
       )
-
       return()
-
     }
 
 
-
-    #id for this evaluation
+############################################################################
+    #id
     id <- paste0(
-
       format(
-
         Sys.time(),
-
         "%Y%m%d%H%M%S"
-
       ),
-
       "_",
 
       sample(
-
         100:999,
-
         1
-
       )
-
     )
-
 
 
     fecha <- format(
-
       Sys.time(),
-
       "%Y-%m-%d %H:%M:%S"
-
     )
 
-
+############################################################################
 
     equipo_actual <- as.integer(
       input$equipo
     )
 
-
     miembros <- input$integrantes
 
-
     nota_final <- round(
-
       get_final(
         grado
       ),
-
       2
-
     )
 
-
-
-    #************************************************************************
-    #TEAM ROW
-
-    #only ONE row goes to the team book
+    #EQUIPO
     nuevo_equipo <- data.frame(
 
       ID = id,
-
       Fecha = fecha,
 
       Profesor = trimws(
@@ -988,11 +1057,8 @@ server <- function(input,output,session){
       Equipo = equipo_actual,
 
       Integrantes = paste(
-
         miembros,
-
         collapse = ", "
-
       ),
 
       Comprension = grado[1],
@@ -1008,15 +1074,10 @@ server <- function(input,output,session){
       Nota_Final = nota_final,
 
       stringsAsFactors = FALSE
-
     )
 
-
-
-    #************************************************************************
-    #STUDENT ROWS
-
-    #every selected student gets the SAME grades
+    #ESTUDIANTES
+    #todos los seleccionados tienen EXACTAMENTE la misma
     nuevos_alumnos <- data.frame(
 
       ID = rep(
@@ -1030,31 +1091,24 @@ server <- function(input,output,session){
       ),
 
       Profesor = rep(
-
         trimws(
           input$profesor
         ),
 
         length(miembros)
-
       ),
 
       Materia_Grupo = rep(
-
         trimws(
           input$materia
         ),
 
         length(miembros)
-
       ),
 
       Equipo = rep(
-
         equipo_actual,
-
         length(miembros)
-
       ),
 
       Alumno = miembros,
@@ -1090,103 +1144,255 @@ server <- function(input,output,session){
       ),
 
       stringsAsFactors = FALSE
-
     )
 
-
-
-    #************************************************************************
-    #SEND TO GOOGLE
+###########################################################
+#GOOGLE
 
     resultado <- tryCatch({
 
-
-      #one grade per team
+      #equipos
       sheet_append(
-
         google_equipos,
-
         nuevo_equipo,
-
         sheet = "Calificaciones_Equipos"
-
       )
 
-
-      #same grade repeated for every selected student
+      #alumnos
       sheet_append(
-
         google_alumnos,
-
         nuevos_alumnos,
-
         sheet = "Calificaciones_Alumnos"
-
       )
 
+      ######################################################################
+      #UPDATE LOCAL FIRST
 
-      #recalculate averages after saving
-      actualiza_promedios()
+      if(nrow(guardados$equipos)==0){
+        guardados$equipos <- nuevo_equipo
+      }else{
+        guardados$equipos <- rbind(
+          guardados$equipos,
+          nuevo_equipo
+        )
+      }
 
+      if(nrow(guardados$alumnos)==0){
+        guardados$alumnos <- nuevos_alumnos
+      }else{
+        guardados$alumnos <- rbind(
+          guardados$alumnos,
+          nuevos_alumnos
+        )
+      }
+
+      #PROMEDIOS
+
+      nuevos_promedios <- actualiza_promedios(
+        guardados$equipos,
+        guardados$alumnos
+      )
+
+      guardados$prom_equipos <- nuevos_promedios$equipos
+      guardados$prom_alumnos <- nuevos_promedios$alumnos
 
       TRUE
 
-
     },error=function(e){
-
-
       showNotification(
-
         paste(
-
           "Google Sheets error:",
-
           e$message
-
         ),
-
         type = "error",
-
         duration = 10
-
       )
-
-
       FALSE
-
     })
 
-
-
     if(!resultado){
-
       return()
-
     }
 
-
-
     showNotification(
-
       paste0(
-
         "Calificacion enviada. Equipo ",
         equipo_actual,
         ": ",
         nota_final
-
       ),
-
       type = "message",
-
       duration = 6
-
     )
-
   })
 
-}
 
+#************************************************************************
+#RESULTADOS
+
+  #tabla equipos
+  output$tabla_promedios <- renderTable({
+    req(
+      guardados$prom_equipos
+    )
+    guardados$prom_equipos
+  },digits = 2)
+
+  #promedio TODOS los alumnos
+  output$promedio_general <- renderText({
+
+    req(
+      guardados$prom_alumnos
+    )
+
+    x <- guardados$prom_alumnos[
+      guardados$prom_alumnos$Alumno == "PROMEDIO GENERAL",
+    ]
+
+    if(nrow(x)==0 || is.na(x$Promedio[1])){
+      return(
+        "Sin calificaciones"
+      )
+    }
+
+    paste0(
+      formatC(
+        x$Promedio[1],
+        format = "f",
+        digits = 2
+      ),
+      " / 10"
+    )
+  })
+
+#************************************************************************
+#GRAFICA
+
+  output$grafica <- renderPlot({
+    req(
+      input$tipo_grafica
+    )
+
+    ########################################################################
+    #EQUIPOS
+
+    if(input$tipo_grafica=="equipos"){
+      datos <- guardados$prom_equipos[
+        guardados$prom_equipos$Equipo != "PROMEDIO GENERAL",
+      ]
+
+      datos$Promedio <- suppressWarnings(
+        as.numeric(
+          datos$Promedio
+        )
+      )
+
+      datos <- datos[
+        !is.na(datos$Promedio),
+      ]
+
+      if(nrow(datos)==0){
+        plot.new()
+        text(
+          0.5,
+          0.5,
+          "No hay calificaciones todavia"
+        )
+        return()
+      }
+
+      barplot(
+        datos$Promedio,
+        names.arg = paste(
+          "Equipo",
+          datos$Equipo
+        ),
+
+        ylim = c(
+          0,
+          10
+        ),
+
+        main = "Promedio por Equipo",
+        xlab = "Equipos",
+        ylab = "Calificacion"
+      )
+
+      abline(
+        h = mean(
+          datos$Promedio,
+          na.rm = TRUE
+        ),
+        lty = 2,
+        lwd = 2
+      )
+    }
+
+    ########################################################################
+    #ALUMNOS
+
+    if(input$tipo_grafica=="alumnos"){
+
+      datos <- guardados$prom_alumnos[
+        guardados$prom_alumnos$Alumno != "PROMEDIO GENERAL",
+      ]
+
+      datos$Promedio <- suppressWarnings(
+        as.numeric(
+          datos$Promedio
+        )
+      )
+
+      datos <- datos[
+        !is.na(datos$Promedio),
+      ]
+
+      if(nrow(datos)==0){
+
+        plot.new()
+        text(
+          0.5,
+          0.5,
+          "No hay calificaciones todavia"
+        )
+        return()
+      }
+
+      #horizontal pq son muchos nombres
+      par(
+        mar = c(
+          5,
+          12,
+          4,
+          2
+        )
+      )
+
+      barplot(
+        datos$Promedio,
+
+        names.arg = datos$Alumno,
+        horiz = TRUE,
+        las = 1,
+        xlim = c(
+          0,
+          10
+        ),
+        main = "Promedio por Alumno",
+        xlab = "Calificacion"
+      )
+
+      abline(
+        v = mean(
+          datos$Promedio,
+          na.rm = TRUE
+        ),
+        lty = 2,
+        lwd = 2
+      )
+    }
+  })
+}
 
 shinyApp(
   ui,
