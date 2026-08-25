@@ -84,34 +84,34 @@ alumnos <- data.frame(
 
 rubrica <- data.frame(
   Aspecto = c(
-    "Comprension conceptual",
+    "Extraer información y adaptar los problemas",
 
-    "Calidad y funcionamiento del prototipo",
+    "Aplica principios matemáticos y físicos",
 
-    "Modelo matematico y analisis",
+    "Evaluación de las limitaciones",
 
-    "Uso de tecnologia y recursos",
+    "Identifican las necesidades de formación continua",
 
-    "Comunicacion y trabajo en equipo"
+    "Desarrollan un plan de formación continua"
   ),
 
   Descripcion = c(
-    "Dominio del principio de conservacion de la energia y su aplicacion al sistema.",
+    "Identifican y formulan problemas complejos estableciendo contexto, parámetros y restricciones.",
 
-    "Funcionamiento del dispositivo, estabilidad y coherencia con el objetivo.",
+    "Desarrollan modelos a partir de la información dada para analizar problemas complejos de ingeniería",
 
-    "Relacion entre las ecuaciones teoricas y el comportamiento experimental.",
+    "Interpretan los resultados obtenidos para extraer conclusiones críticas y fundamentadas.",
 
-    "Uso de software, materiales y creatividad en el diseño.",
+    "Identifican las necesidades de formación continua.",
 
-    "Claridad, organizacion y participacion equilibrada durante la presentacion."
+    "Desarrollan un plan de formación continua."
   ),
 
   Peso = c(
-    25,
-    25,
+    40,
     20,
     20,
+    10,
     10
   ),
 
@@ -121,7 +121,7 @@ rubrica <- data.frame(
 #comprobante
 if(sum(rubrica$Peso)!=100){
   stop(
-    "La suma de la rubrica debe ser igual a 100"
+    "La suma de la rúbrica debe ser igual a 100"
   )
 }
 
@@ -229,7 +229,7 @@ if(file.exists(google_equipos_id_file)){
 #crear libro equipo
 if(is.null(google_equipos)){
   google_equipos <- gs4_create(
-    "Evaluaciones Rubricas UAEH - Equipos",
+    "Evaluaciones rúbricas UAEH - Equipos",
 
     sheets = list(
       Calificaciones_Equipos = empty_equipos,
@@ -310,7 +310,7 @@ if(file.exists(google_alumnos_id_file)){
 #student book
 if(is.null(google_alumnos)){
   google_alumnos <- gs4_create(
-    "Evaluaciones Rubricas UAEH - Alumnos",
+    "Evaluaciones rúbricas UAEH - Alumnos",
 
     sheets = list(
       Calificaciones_Alumnos = empty_alumnos,
@@ -349,7 +349,7 @@ if(!("Promedio_Alumnos" %in% current_sheets)){
 #************************************************************************
 #FUNCIONES
 
-#calif final
+#calif finalshiny::runApp("C:/Users/Moonl/Documents/GitHub/PP-Proyectos/SISTEMA-RUBRICA")
 get_final <- function(grado){
   sum(
     grado * rubrica$Peso
@@ -568,14 +568,14 @@ ui <- dashboardPage(
   skin = "blue",
 
   dashboardHeader(
-    title = "Evaluacion de Rubricas"
+    title = "Rubricas"
   ),
 
   dashboardSidebar(
     sidebarMenu(
 
       menuItem(
-        "Evaluar Equipo",
+        "Evaluar equipos",
         tabName = "evaluacion",
         icon = icon("users")
       ),
@@ -600,7 +600,7 @@ ui <- dashboardPage(
         fluidRow(
 
           box(
-            title = "Datos de Evaluacion",
+            title = "Datos de evaluación",
             status = "primary",
             solidHeader = TRUE,
             width = 4,
