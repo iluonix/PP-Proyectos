@@ -1,19 +1,35 @@
 # shiny::runApp("C:/Users/PC/Documents/GitHub/PP-Proyectos/SISTEMA-RUBRICA")
-
 library(shiny)
 library(shinydashboard)
 library(googlesheets4)
 library(readxl)
 
 #************************************************************************
+
 #GOOGLE
 
-google_email <- "mi463667@uaeh.edu.mx"
-
-gs4_auth(
-  email = google_email
+google_email <- trimws(
+  Sys.getenv("GOOGLE_EMAIL")
 )
 
+
+if(google_email==""){
+
+  stop(
+    "Falta configurar GOOGLE_EMAIL en .Renviron"
+  )
+}
+
+options(
+  gargle_oob_default = TRUE
+)
+
+
+gs4_auth(
+  email = google_email,
+  cache = TRUE,
+  use_oob = TRUE
+)
 
 #************************************************************************
 #SEMESTRE
