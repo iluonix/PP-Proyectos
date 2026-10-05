@@ -1,23 +1,175 @@
-# shiny::runApp("C:/Users/PC/Documents/GitHub/PP-Proyectos/SISTEMA-RUBRICA")
 library(shiny)
 library(shinydashboard)
 library(googlesheets4)
 library(readxl)
+library(digest)
 
 #************************************************************************
-#GOOGLE
 
-google_email <- "mi463667@uaeh.edu.mx"
+private_dir <- file.path(
+  getwd(),
+  "private"
+)
 
-gs4_auth(
-  email = google_email
+config_file <- file.path(
+  private_dir,
+  "config.rds"
+)
+
+google_cache <- file.path(
+  private_dir,
+  "google-token"
 )
 
 
-#************************************************************************
-#SEMESTRE
+if(!file.exists(config_file)){
 
-#enero-junio / julio-diciembre
+  stop(
+    paste0(
+      "Falta private/config.rds. ",
+      "Ejecuta source('configurar.R') desde RStudio antes de correr o publicar."
+    )
+  )
+}
+
+
+if(
+  !dir.exists(google_cache) ||
+  length(
+    list.files(
+      google_cache,
+      all.files = FALSE
+    )
+  )==0
+){
+
+  stop(
+    paste0(
+      "Falta la autorizacion de Google. ",
+      "Ejecuta source('configurar.R') desde RStudio y autoriza ",
+      "marco.montufar14@gmail.com."
+    )
+  )
+}
+
+
+config <- readRDS(
+  config_file
+)
+
+
+required_config <- c(
+  "google_email",
+  "google_admin_sheet_id",
+  "google_equipos_sheet_id",
+  "google_alumnos_sheet_id",
+  "admin_hash"
+)
+
+
+faltantes <- required_config[
+  !(required_config %in% names(config))
+]
+
+
+if(length(faltantes)>0){
+
+  stop(
+    paste(
+      "Faltan datos en private/config.rds:",
+      paste(
+        faltantes,
+        collapse = ", "
+      )
+    )
+  )
+}
+
+
+google_email <- trimws(
+  as.character(
+    config$google_email
+  )
+)
+
+
+if(
+  tolower(google_email) !=
+  "marco.montufar14@gmail.com"
+){
+
+  stop(
+    paste0(
+      "La configuracion de Google no corresponde a Montufar. ",
+      "Vuelve a ejecutar source('configurar.R')."
+    )
+  )
+}
+
+
+#************************************************************************
+#GOOGLE AUTH
+#
+#The cached OAuth token belongs to Montufar.
+#The app reuses it when running locally or on shinyapps.io.
+#************************************************************************
+
+options(
+  gargle_oauth_cache = google_cache,
+  gargle_oauth_email = google_email
+)
+
+
+gs4_auth(
+  email = google_email,
+  cache = google_cache
+)
+
+
+google_admin <- as_sheets_id(
+  config$google_admin_sheet_id
+)
+
+google_equipos <- as_sheets_id(
+  config$google_equipos_sheet_id
+)
+
+google_alumnos <- as_sheets_id(
+  config$google_alumnos_sheet_id
+)
+
+
+#basic connection check
+
+tryCatch({
+
+  gs4_get(
+    google_admin
+  )
+
+  gs4_get(
+    google_equipos
+  )
+
+  gs4_get(
+    google_alumnos
+  )
+
+},error=function(e){
+
+  stop(
+    paste0(
+      "No se pudieron abrir los Google Sheets de Montufar. ",
+      "Si la autorizacion fue revocada, ejecuta otra vez source('configurar.R') ",
+      "y vuelve a publicar. Detalle: ",
+      e$message
+    )
+  )
+})
+
+
+#************************************************************************
+#SEMESTER
 
 get_semestre <- function(fecha=Sys.Date()){
 
@@ -54,55 +206,57 @@ get_semestre <- function(fecha=Sys.Date()){
 semestre <- get_semestre()
 
 
-#************************************************************************
-#RUBRICA ACTUAL
+sheet_lista <- semestre
 
-#esta SI se usa para calificar
-#scale 0-100
+sheet_cal_equipos <- paste(
+  "Calificaciones",
+  semestre,
+  sep = " - "
+)
 
-rubrica <- data.frame(
+sheet_prom_equipos <- paste(
+  "Promedios",
+  semestre,
+  sep = " - "
+)
 
-  Aspecto = c(
-    "Memoria Tecnica",
-    "Simulacion Computacional",
-    "Defensa Oral",
-    "Documentacion y Codigo"
-  ),
-
-  Peso = c(
-    30,
-    30,
-    35,
-    5
-  ),
-
-  stringsAsFactors = FALSE
+sheet_larga_equipos <- paste(
+  "Rubrica Larga",
+  semestre,
+  sep = " - "
 )
 
 
-#comprobante
-if(sum(rubrica$Peso)!=100){
+sheet_cal_alumnos <- paste(
+  "Calificaciones",
+  semestre,
+  sep = " - "
+)
 
-  stop(
-    "La suma de la rubrica debe ser igual a 100"
-  )
-}
+sheet_prom_alumnos <- paste(
+  "Promedios",
+  semestre,
+  sep = " - "
+)
+
+sheet_larga_alumnos <- paste(
+  "Rubrica Larga",
+  semestre,
+  sep = " - "
+)
 
 
 #************************************************************************
-#RUBRICA CORTA
+#SHORT RUBRIC
+#
+#THIS IS THE RUBRIC USED TO EVALUATE
+#scale 0-10
+#************************************************************************
 
-#solo reference
-#se puede ver desde admin
-
-rubrica_corta <- data.frame(
+rubrica <- data.frame(
 
   Numero = c(
-    1,
-    2,
-    3,
-    4,
-    5
+    1,2,3,4,5,6
   ),
 
   Aspecto = c(
@@ -110,52 +264,54 @@ rubrica_corta <- data.frame(
     "Calidad y funcionamiento del prototipo",
     "Modelo matematico y analisis",
     "Uso de tecnologia y recursos",
-    "Comunicacion y trabajo en equipo"
-  ),
-
-  Peso = c(
-    25,
-    25,
-    20,
-    20,
-    10
+    "Comunicacion y trabajo en equipo",
+    "Formacion continua y aprendizaje autonomo"
   ),
 
   Descripcion = c(
+    "Dominio de los conceptos y principios aplicados al proyecto.",
+    "Funcionamiento, estabilidad y coherencia del prototipo con el objetivo.",
+    "Relacion entre el modelo teorico, las ecuaciones y el comportamiento experimental.",
+    "Uso adecuado de software, materiales, herramientas y recursos tecnologicos.",
+    "Claridad, organizacion, comunicacion y participacion equilibrada del equipo.",
+    "Identificacion de necesidades de formacion y propuesta de un plan para adquirir nuevos conocimientos o herramientas."
+  ),
 
-    "Dominio del principio de conservacion de la energia y su aplicacion al sistema.",
-
-    "Funcionamiento del dispositivo, estabilidad y coherencia con el objetivo.",
-
-    "Relacion entre las ecuaciones teoricas y el comportamiento experimental.",
-
-    "Uso de software, materiales, herramientas y creatividad en el diseño.",
-
-    "Claridad, organizacion y participacion equilibrada durante la presentacion."
-
+  Peso = c(
+    20,
+    20,
+    20,
+    20,
+    10,
+    10
   ),
 
   stringsAsFactors = FALSE
 )
 
 
-#************************************************************************
-#RUBRICA LARGA
+if(sum(rubrica$Peso)!=100){
 
+  stop(
+    "La suma de la rubrica corta debe ser igual a 100."
+  )
+}
+
+
+#************************************************************************
+#LONG RUBRIC
+#
 #PC + UT
-#reference para admin
+#
+#IMPORTANT:
+#Nota_Larga is ALWAYS equal to Nota_Corta.
+#PC and UT are kept as diagnostic/detail averages only.
+#************************************************************************
 
 rubrica_larga <- data.frame(
 
   Numero = c(
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8
+    1,2,3,4,5,6,7,8
   ),
 
   Rubrica = c(
@@ -170,43 +326,25 @@ rubrica_larga <- data.frame(
   ),
 
   Aspecto = c(
-
     "Extraer informacion y adaptar los problemas",
-
     "Aplica principios matematicos y fisicos",
-
     "Evaluacion de las limitaciones",
-
     "Identifican las necesidades de formacion continua",
-
     "Desarrollan un plan de formacion continua",
-
     "Seleccion de la herramienta TIC",
-
     "Uso de herramientas TIC",
-
     "Evaluacion de las limitaciones de las herramientas TIC"
-
   ),
 
   Relacion_Corta = c(
-
     "1 - Comprension conceptual",
-
     "3 - Modelo matematico y analisis",
-
     "3 - Modelo matematico y analisis",
-
+    "6 - Formacion continua y aprendizaje autonomo",
+    "6 - Formacion continua y aprendizaje autonomo",
     "4 - Uso de tecnologia y recursos",
-
     "4 - Uso de tecnologia y recursos",
-
-    "4 - Uso de tecnologia y recursos",
-
-    "4 - Uso de tecnologia y recursos",
-
     "4 - Uso de tecnologia y recursos"
-
   ),
 
   stringsAsFactors = FALSE
@@ -215,6 +353,16 @@ rubrica_larga <- data.frame(
 
 #************************************************************************
 #EMPTY TABLES
+
+empty_lista <- data.frame(
+
+  Equipo = character(),
+  Alumno = character(),
+  Activo = character(),
+
+  stringsAsFactors = FALSE
+)
+
 
 empty_equipos <- data.frame(
 
@@ -228,12 +376,14 @@ empty_equipos <- data.frame(
   Equipo = character(),
   Integrantes = character(),
 
-  Memoria = numeric(),
-  Simulacion = numeric(),
-  Defensa = numeric(),
-  Codigo = numeric(),
+  Comprension = numeric(),
+  Prototipo = numeric(),
+  Modelo = numeric(),
+  Tecnologia = numeric(),
+  Comunicacion = numeric(),
+  Formacion = numeric(),
 
-  Nota_Final = numeric(),
+  Nota_Corta = numeric(),
 
   stringsAsFactors = FALSE
 )
@@ -251,12 +401,14 @@ empty_alumnos <- data.frame(
   Equipo = character(),
   Alumno = character(),
 
-  Memoria = numeric(),
-  Simulacion = numeric(),
-  Defensa = numeric(),
-  Codigo = numeric(),
+  Comprension = numeric(),
+  Prototipo = numeric(),
+  Modelo = numeric(),
+  Tecnologia = numeric(),
+  Comunicacion = numeric(),
+  Formacion = numeric(),
 
-  Nota_Final = numeric(),
+  Nota_Corta = numeric(),
 
   stringsAsFactors = FALSE
 )
@@ -266,12 +418,15 @@ empty_prom_equipos <- data.frame(
 
   Equipo = character(),
 
-  Memoria = numeric(),
-  Simulacion = numeric(),
-  Defensa = numeric(),
-  Codigo = numeric(),
+  Comprension = numeric(),
+  Prototipo = numeric(),
+  Modelo = numeric(),
+  Tecnologia = numeric(),
+  Comunicacion = numeric(),
+  Formacion = numeric(),
 
-  Nota_Final = numeric(),
+  Nota_Corta = numeric(),
+  Nota_Larga = numeric(),
 
   stringsAsFactors = FALSE
 )
@@ -282,100 +437,94 @@ empty_prom_alumnos <- data.frame(
   Equipo = character(),
   Alumno = character(),
 
-  Memoria = numeric(),
-  Simulacion = numeric(),
-  Defensa = numeric(),
-  Codigo = numeric(),
+  Comprension = numeric(),
+  Prototipo = numeric(),
+  Modelo = numeric(),
+  Tecnologia = numeric(),
+  Comunicacion = numeric(),
+  Formacion = numeric(),
 
-  Nota_Final = numeric(),
+  Nota_Corta = numeric(),
+  Nota_Larga = numeric(),
 
   stringsAsFactors = FALSE
 )
 
 
-#lista administrativa
-empty_lista <- data.frame(
+empty_larga_equipos <- data.frame(
+
+  ID = character(),
+  Fecha = character(),
+  Semestre = character(),
+
+  Profesor = character(),
+  Materia_Grupo = character(),
+
+  Equipo = character(),
+  Integrantes = character(),
+
+  PC_1 = numeric(),
+  PC_2 = numeric(),
+  PC_3 = numeric(),
+  PC_4 = numeric(),
+  PC_5 = numeric(),
+
+  UT_1 = numeric(),
+  UT_2 = numeric(),
+  UT_3 = numeric(),
+
+  Promedio_PC = numeric(),
+  Promedio_UT = numeric(),
+
+  Nota_Corta = numeric(),
+  Nota_Larga = numeric(),
+
+  stringsAsFactors = FALSE
+)
+
+
+empty_larga_alumnos <- data.frame(
+
+  ID = character(),
+  Fecha = character(),
+  Semestre = character(),
+
+  Profesor = character(),
+  Materia_Grupo = character(),
 
   Equipo = character(),
   Alumno = character(),
-  Activo = character(),
 
-  stringsAsFactors = FALSE
-)
+  PC_1 = numeric(),
+  PC_2 = numeric(),
+  PC_3 = numeric(),
+  PC_4 = numeric(),
+  PC_5 = numeric(),
 
+  UT_1 = numeric(),
+  UT_2 = numeric(),
+  UT_3 = numeric(),
 
-#registro de semestres
-empty_semestres <- data.frame(
+  Promedio_PC = numeric(),
+  Promedio_UT = numeric(),
 
-  Semestre = character(),
-
-  Libro_Equipos_ID = character(),
-  Libro_Alumnos_ID = character(),
-
-  Fecha_Creacion = character(),
+  Nota_Corta = numeric(),
+  Nota_Larga = numeric(),
 
   stringsAsFactors = FALSE
 )
 
 
 #************************************************************************
-#FUNCTIONS
-
-read_old <- function(ss,sheet){
-
-  tryCatch({
-
-    if(!(sheet %in% sheet_names(ss))){
-
-      return(
-        data.frame()
-      )
-    }
-
-
-    x <- read_sheet(
-
-      ss,
-
-      sheet = sheet,
-
-      show_col_types = FALSE
-    )
-
-
-    as.data.frame(
-      x
-    )
-
-
-  },error=function(e){
-
-    data.frame()
-  })
-}
-
-
-#calificacion final
-get_final <- function(grado){
-
-  sum(
-    grado *
-    rubrica$Peso
-  ) / 100
-}
-
-
-#average without nan
+#BASIC FUNCTIONS
 
 promedio <- function(x){
 
   x <- suppressWarnings(
-
     as.numeric(
       x
     )
   )
-
 
   x <- x[
     !is.na(x)
@@ -397,589 +546,306 @@ promedio <- function(x){
 }
 
 
-#************************************************************************
-#GOOGLE ADMIN BOOK
+get_final <- function(grado){
 
-#este libro no cambia por semestre
+  round(
 
-google_config_id_file <- file.path(
+    sum(
+      grado *
+      rubrica$Peso
+    ) / 100,
 
-  getwd(),
-
-  "google_config_id.txt"
-)
-
-
-google_config <- NULL
-
-
-if(file.exists(google_config_id_file)){
-
-  old_id <- readLines(
-
-    google_config_id_file,
-
-    warn = FALSE
-  )
-
-
-  if(length(old_id)>0){
-
-    old_id <- trimws(
-      old_id[1]
-    )
-
-
-    if(old_id!=""){
-
-      google_config <- tryCatch({
-
-        ss <- as_sheets_id(
-          old_id
-        )
-
-        gs4_get(
-          ss
-        )
-
-        ss
-
-      },error=function(e){
-
-        NULL
-      })
-    }
-  }
-}
-
-
-#create admin book
-
-if(is.null(google_config)){
-
-  google_config <- gs4_create(
-
-    "Administracion Rubricas UAEH",
-
-    sheets = list(
-
-      Semestres = empty_semestres
-    )
-  )
-
-
-  writeLines(
-
-    as.character(
-      google_config
-    ),
-
-    google_config_id_file
+    2
   )
 }
 
 
-#************************************************************************
-#ADMIN SHEETS
+hash_password <- function(password){
 
-current_config_sheets <- sheet_names(
-  google_config
-)
-
-
-#student list for current semester
-
-if(!(semestre %in% current_config_sheets)){
-
-  sheet_write(
-
-    empty_lista,
-
-    ss = google_config,
-
-    sheet = semestre
+  digest::digest(
+    password,
+    algo = "sha256",
+    serialize = FALSE
   )
 }
 
 
-if(!("Semestres" %in% sheet_names(google_config))){
-
-  sheet_write(
-
-    empty_semestres,
-
-    ss = google_config,
-
-    sheet = "Semestres"
-  )
-}
-
-
-#************************************************************************
-#CURRENT SEMESTER BOOKS
-
-get_libros_semestre <- function(){
-
-
-  registro <- read_old(
-
-    google_config,
-
-    "Semestres"
-  )
-
-
-  equipo_id <- NULL
-  alumno_id <- NULL
-
-
-  if(nrow(registro)>0){
-
-    registro$Semestre <- as.character(
-      registro$Semestre
-    )
-
-
-    fila <- which(
-
-      trimws(
-        registro$Semestre
-      ) == semestre
-    )
-
-
-    if(length(fila)>0){
-
-      fila <- fila[1]
-
-
-      equipo_id <- as.character(
-        registro$Libro_Equipos_ID[fila]
-      )
-
-
-      alumno_id <- as.character(
-        registro$Libro_Alumnos_ID[fila]
-      )
-
-
-      equipo_ok <- tryCatch({
-
-        gs4_get(
-          as_sheets_id(
-            equipo_id
-          )
-        )
-
-        TRUE
-
-      },error=function(e){
-
-        FALSE
-      })
-
-
-      alumno_ok <- tryCatch({
-
-        gs4_get(
-          as_sheets_id(
-            alumno_id
-          )
-        )
-
-        TRUE
-
-      },error=function(e){
-
-        FALSE
-      })
-
-
-      if(!equipo_ok){
-
-        equipo_id <- NULL
-      }
-
-
-      if(!alumno_ok){
-
-        alumno_id <- NULL
-      }
-    }
-  }
-
-
-  #************************************************************************
-  #TEAM BOOK
+admin_password_ok <- function(password){
 
   if(
-    is.null(equipo_id) ||
-    is.na(equipo_id) ||
-    equipo_id==""
+    is.null(password) ||
+    trimws(password)==""
   ){
 
-    nuevo <- gs4_create(
-
-      paste(
-        "Evaluaciones Rubricas UAEH - Equipos -",
-        semestre
-      ),
-
-      sheets = list(
-
-        Calificaciones = empty_equipos,
-
-        Promedios = empty_prom_equipos
-      )
-    )
-
-
-    equipo_id <- as.character(
-      nuevo
+    return(
+      FALSE
     )
   }
 
 
-  #************************************************************************
-  #STUDENT BOOK
+  hash_guardado <- trimws(
+    as.character(
+      config$admin_hash
+    )
+  )
+
 
   if(
-    is.null(alumno_id) ||
-    is.na(alumno_id) ||
-    alumno_id==""
+    is.na(hash_guardado) ||
+    hash_guardado==""
   ){
 
-    nuevo <- gs4_create(
-
-      paste(
-        "Evaluaciones Rubricas UAEH - Alumnos -",
-        semestre
-      ),
-
-      sheets = list(
-
-        Calificaciones = empty_alumnos,
-
-        Promedios = empty_prom_alumnos
-      )
-    )
-
-
-    alumno_id <- as.character(
-      nuevo
+    return(
+      FALSE
     )
   }
 
 
-  #************************************************************************
-  #SAVE IDS
-
-  if(nrow(registro)==0){
-
-    registro <- empty_semestres
-  }
-
-
-  fila <- which(
-
-    as.character(
-      registro$Semestre
-    ) == semestre
-  )
-
-
-  if(length(fila)==0){
-
-    registro <- rbind(
-
-      registro,
-
-      data.frame(
-
-        Semestre = semestre,
-
-        Libro_Equipos_ID = equipo_id,
-
-        Libro_Alumnos_ID = alumno_id,
-
-        Fecha_Creacion = as.character(
-          Sys.Date()
-        ),
-
-        stringsAsFactors = FALSE
-      )
-    )
-
-
-  }else{
-
-    fila <- fila[1]
-
-    registro$Libro_Equipos_ID[fila] <- equipo_id
-
-    registro$Libro_Alumnos_ID[fila] <- alumno_id
-  }
-
-
-  sheet_write(
-
-    registro,
-
-    ss = google_config,
-
-    sheet = "Semestres"
-  )
-
-
-  list(
-
-    equipos = as_sheets_id(
-      equipo_id
+  identical(
+    hash_password(
+      password
     ),
+    hash_guardado
+  )
+}
 
-    alumnos = as_sheets_id(
-      alumno_id
+
+google_url <- function(id){
+
+  paste0(
+    "https://docs.google.com/spreadsheets/d/",
+    id,
+    "/edit"
+  )
+}
+
+
+#************************************************************************
+#GOOGLE HELPERS
+
+ensure_sheet <- function(
+  ss,
+  sheet,
+  empty_table,
+  existing_sheets = NULL
+){
+
+  if(is.null(existing_sheets)){
+
+    existing_sheets <- sheet_names(
+      ss
     )
-  )
+  }
+
+
+  if(!(sheet %in% existing_sheets)){
+
+    sheet_write(
+      empty_table,
+      ss = ss,
+      sheet = sheet
+    )
+  }
 }
 
 
-libros <- get_libros_semestre()
+read_table <- function(
+  ss,
+  sheet,
+  empty_table
+){
+
+  x <- tryCatch({
+
+    read_sheet(
+      ss,
+      sheet = sheet,
+      show_col_types = FALSE
+    )
+
+  },error=function(e){
+
+    stop(
+      paste0(
+        "No se pudo leer la hoja '",
+        sheet,
+        "': ",
+        e$message
+      )
+    )
+  })
 
 
-google_equipos <- libros$equipos
-
-google_alumnos <- libros$alumnos
-
-
-#************************************************************************
-#CHECK BOOK TABS
-
-if(!("Calificaciones" %in% sheet_names(google_equipos))){
-
-  sheet_write(
-
-    empty_equipos,
-
-    ss = google_equipos,
-
-    sheet = "Calificaciones"
-  )
-}
-
-
-if(!("Promedios" %in% sheet_names(google_equipos))){
-
-  sheet_write(
-
-    empty_prom_equipos,
-
-    ss = google_equipos,
-
-    sheet = "Promedios"
-  )
-}
-
-
-if(!("Calificaciones" %in% sheet_names(google_alumnos))){
-
-  sheet_write(
-
-    empty_alumnos,
-
-    ss = google_alumnos,
-
-    sheet = "Calificaciones"
-  )
-}
-
-
-if(!("Promedios" %in% sheet_names(google_alumnos))){
-
-  sheet_write(
-
-    empty_prom_alumnos,
-
-    ss = google_alumnos,
-
-    sheet = "Promedios"
-  )
-}
-
-
-#************************************************************************
-#URLS
-
-google_config_url <- paste0(
-
-  "https://docs.google.com/spreadsheets/d/",
-
-  as.character(
-    google_config
-  ),
-
-  "/edit"
-)
-
-
-google_equipos_url <- paste0(
-
-  "https://docs.google.com/spreadsheets/d/",
-
-  as.character(
-    google_equipos
-  ),
-
-  "/edit"
-)
-
-
-google_alumnos_url <- paste0(
-
-  "https://docs.google.com/spreadsheets/d/",
-
-  as.character(
-    google_alumnos
-  ),
-
-  "/edit"
-)
-
-
-#************************************************************************
-#GET CURRENT STUDENTS
-
-get_alumnos <- function(){
-
-
-  x <- read_old(
-
-    google_config,
-
-    semestre
+  x <- as.data.frame(
+    x
   )
 
 
   if(nrow(x)==0){
 
     return(
-
-      data.frame(
-
-        Equipo = character(),
-
-        Alumno = character(),
-
-        stringsAsFactors = FALSE
-      )
+      empty_table
     )
   }
 
 
-  if(!("Equipo" %in% names(x))){
+  x
+}
+
+
+#************************************************************************
+#NORMALIZE ROSTER
+
+normalizar_lista <- function(x){
+
+  if(
+    is.null(x) ||
+    nrow(x)==0
+  ){
 
     return(
-
-      data.frame(
-
-        Equipo = character(),
-
-        Alumno = character(),
-
-        stringsAsFactors = FALSE
-      )
+      empty_lista
     )
   }
 
 
-  if(!("Alumno" %in% names(x))){
+  if(
+    !("Equipo" %in% names(x)) ||
+    !("Alumno" %in% names(x))
+  ){
 
     return(
-
-      data.frame(
-
-        Equipo = character(),
-
-        Alumno = character(),
-
-        stringsAsFactors = FALSE
-      )
+      empty_lista
     )
   }
 
 
   if(!("Activo" %in% names(x))){
 
-    x$Activo <- "SI"
+    x$Activo <- rep(
+      "SI",
+      nrow(x)
+    )
   }
 
 
-  x$Equipo <- as.character(
-    x$Equipo
+  y <- data.frame(
+
+    Equipo = as.character(
+      x$Equipo
+    ),
+
+    Alumno = as.character(
+      x$Alumno
+    ),
+
+    Activo = as.character(
+      x$Activo
+    ),
+
+    stringsAsFactors = FALSE
   )
 
-  x$Alumno <- as.character(
-    x$Alumno
+
+  y$Equipo <- trimws(
+    y$Equipo
   )
 
-  x$Activo <- as.character(
-    x$Activo
+  y$Alumno <- trimws(
+    y$Alumno
+  )
+
+  y$Activo <- toupper(
+    trimws(
+      y$Activo
+    )
   )
 
 
-  x <- x[
+  y$Activo[
+    is.na(y$Activo) |
+    y$Activo==""
+  ] <- "SI"
 
-    toupper(
-      trimws(
-        x$Activo
-      )
-    ) == "SI",
 
+  y$Activo[
+    !(y$Activo %in% c(
+      "SI",
+      "NO"
+    ))
+  ] <- "SI"
+
+
+  y <- y[
+
+    !is.na(y$Equipo) &
+    !is.na(y$Alumno) &
+    y$Equipo != "" &
+    y$Alumno != "",
+
+    ,
+
+    drop = FALSE
   ]
 
 
+  y <- unique(
+    y
+  )
+
+
+  rownames(y) <- NULL
+
+
+  y
+}
+
+
+lista_activa <- function(x){
+
+  x <- normalizar_lista(
+    x
+  )
+
+
+  if(nrow(x)==0){
+
+    return(
+      data.frame(
+        Equipo = character(),
+        Alumno = character(),
+        stringsAsFactors = FALSE
+      )
+    )
+  }
+
+
   x <- x[
-    ,
+    x$Activo=="SI",
     c(
       "Equipo",
       "Alumno"
-    )
+    ),
+    drop = FALSE
   ]
 
 
-  x$Equipo <- trimws(
-    x$Equipo
-  )
-
-  x$Alumno <- trimws(
-    x$Alumno
-  )
+  rownames(x) <- NULL
 
 
-  x <- x[
-
-    !is.na(x$Equipo) &
-    !is.na(x$Alumno) &
-    x$Equipo != "" &
-    x$Alumno != "",
-
-  ]
-
-
-  unique(
-    x
-  )
+  x
 }
 
 
 #************************************************************************
 #READ STUDENT FILE
 
-leer_lista <- function(path,name){
-
+leer_lista_archivo <- function(
+  path,
+  name
+){
 
   ext <- tolower(
-
     tools::file_ext(
       name
     )
@@ -989,22 +855,42 @@ leer_lista <- function(path,name){
   if(ext=="csv"){
 
     x <- read.csv(
-
       path,
-
       stringsAsFactors = FALSE,
-
       check.names = FALSE
     )
 
+  }else if(ext %in% c(
+    "xlsx",
+    "xls"
+  )){
 
-  }else{
+    hojas <- excel_sheets(
+      path
+    )
+
+
+    hoja <- if(
+      "Lista_Alumnos" %in% hojas
+    ){
+      "Lista_Alumnos"
+    }else{
+      hojas[1]
+    }
+
 
     x <- as.data.frame(
 
       read_excel(
-        path
+        path,
+        sheet = hoja
       )
+    )
+
+  }else{
+
+    stop(
+      "El archivo debe ser .xlsx, .xls o .csv"
     )
   }
 
@@ -1014,30 +900,27 @@ leer_lista <- function(path,name){
   )
 
 
+  #first transliterate, then lowercase, then remove symbols
+  nombres_limpios <- iconv(
+    nombres,
+    to = "ASCII//TRANSLIT"
+  )
+
   nombres_limpios <- tolower(
+    nombres_limpios
+  )
 
-    gsub(
-
-      "[^a-z0-9]",
-
-      "",
-
-      iconv(
-
-        nombres,
-
-        to = "ASCII//TRANSLIT"
-      )
-    )
+  nombres_limpios <- gsub(
+    "[^a-z0-9]",
+    "",
+    nombres_limpios
   )
 
 
   col_equipo <- which(
 
     nombres_limpios %in% c(
-
       "equipo",
-
       "team"
     )
   )
@@ -1046,14 +929,11 @@ leer_lista <- function(path,name){
   col_alumno <- which(
 
     nombres_limpios %in% c(
-
       "alumno",
-
       "estudiante",
-
       "nombre",
-
-      "nombrealumno"
+      "nombrealumno",
+      "student"
     )
   )
 
@@ -1061,9 +941,7 @@ leer_lista <- function(path,name){
   col_activo <- which(
 
     nombres_limpios %in% c(
-
       "activo",
-
       "active"
     )
   )
@@ -1075,7 +953,7 @@ leer_lista <- function(path,name){
   ){
 
     stop(
-      "El archivo debe tener las columnas Equipo y Alumno"
+      "El archivo debe tener las columnas Equipo y Alumno."
     )
   }
 
@@ -1102,256 +980,465 @@ leer_lista <- function(path,name){
 
   }else{
 
-    lista$Activo <- "SI"
+    lista$Activo <- rep(
+      "SI",
+      nrow(lista)
+    )
   }
 
 
-  lista$Equipo <- trimws(
-    lista$Equipo
-  )
-
-  lista$Alumno <- trimws(
-    lista$Alumno
-  )
-
-
-  lista <- lista[
-
-    !is.na(lista$Equipo) &
-    !is.na(lista$Alumno) &
-    lista$Equipo != "" &
-    lista$Alumno != "",
-
-  ]
-
-
-  lista$Activo[
-
-    is.na(lista$Activo) |
-    lista$Activo==""
-
-  ] <- "SI"
-
-
-  unique(
+  normalizar_lista(
     lista
   )
 }
 
 
 #************************************************************************
-#AVERAGES
+#LONG RUBRIC CONVERSION
+#
+#Short -> Long:
+#1 -> PC1
+#3 -> PC2, PC3
+#6 -> PC4, PC5
+#4 -> UT1, UT2, UT3
+#
+#Nota_Larga = Nota_Corta ALWAYS
+#************************************************************************
 
-actualiza_promedios <- function(
-  datos_eq=NULL,
-  datos_al=NULL,
-  lista=NULL
-){
-
-
-  if(is.null(lista)){
-
-    lista <- get_alumnos()
-  }
-
-
-  if(is.null(datos_eq)){
-
-    datos_eq <- read_old(
-
-      google_equipos,
-
-      "Calificaciones"
-    )
-  }
-
-
-  if(is.null(datos_al)){
-
-    datos_al <- read_old(
-
-      google_alumnos,
-
-      "Calificaciones"
-    )
-  }
-
-
-  #************************************************************************
-  #NO STUDENTS YET
+convertir_larga_equipos <- function(x){
 
   if(
-    is.null(lista) ||
-    nrow(lista)==0
+    is.null(x) ||
+    nrow(x)==0
   ){
 
-    prom_eq <- data.frame(
-
-      Equipo = character(),
-
-      Memoria = numeric(),
-
-      Simulacion = numeric(),
-
-      Defensa = numeric(),
-
-      Codigo = numeric(),
-
-      Nota_Final = numeric(),
-
-      stringsAsFactors = FALSE
-    )
-
-
-    prom_al <- data.frame(
-
-      Equipo = character(),
-
-      Alumno = character(),
-
-      Memoria = numeric(),
-
-      Simulacion = numeric(),
-
-      Defensa = numeric(),
-
-      Codigo = numeric(),
-
-      Nota_Final = numeric(),
-
-      stringsAsFactors = FALSE
-    )
-
-
-    sheet_write(
-
-      prom_eq,
-
-      ss = google_equipos,
-
-      sheet = "Promedios"
-    )
-
-
-    sheet_write(
-
-      prom_al,
-
-      ss = google_alumnos,
-
-      sheet = "Promedios"
-    )
-
-
     return(
-
-      list(
-
-        equipos = prom_eq,
-
-        alumnos = prom_al
-      )
+      empty_larga_equipos
     )
   }
 
 
-  #************************************************************************
-  #TEAMS
+  y <- data.frame(
 
-  equipos <- unique(
-
-    as.character(
-      lista$Equipo
-    )
-  )
-
-
-  prom_eq <- data.frame(
-
-    Equipo = equipos,
-
-    Memoria = rep(
-      NA_real_,
-      length(equipos)
+    ID = as.character(
+      x$ID
     ),
 
-    Simulacion = rep(
-      NA_real_,
-      length(equipos)
+    Fecha = as.character(
+      x$Fecha
     ),
 
-    Defensa = rep(
-      NA_real_,
-      length(equipos)
+    Semestre = as.character(
+      x$Semestre
     ),
 
-    Codigo = rep(
-      NA_real_,
-      length(equipos)
+    Profesor = as.character(
+      x$Profesor
     ),
 
-    Nota_Final = rep(
-      NA_real_,
-      length(equipos)
+    Materia_Grupo = as.character(
+      x$Materia_Grupo
+    ),
+
+    Equipo = as.character(
+      x$Equipo
+    ),
+
+    Integrantes = as.character(
+      x$Integrantes
+    ),
+
+    PC_1 = as.numeric(
+      x$Comprension
+    ),
+
+    PC_2 = as.numeric(
+      x$Modelo
+    ),
+
+    PC_3 = as.numeric(
+      x$Modelo
+    ),
+
+    PC_4 = as.numeric(
+      x$Formacion
+    ),
+
+    PC_5 = as.numeric(
+      x$Formacion
+    ),
+
+    UT_1 = as.numeric(
+      x$Tecnologia
+    ),
+
+    UT_2 = as.numeric(
+      x$Tecnologia
+    ),
+
+    UT_3 = as.numeric(
+      x$Tecnologia
     ),
 
     stringsAsFactors = FALSE
   )
 
 
+  y$Promedio_PC <- round(
+
+    rowMeans(
+      y[
+        ,
+        c(
+          "PC_1",
+          "PC_2",
+          "PC_3",
+          "PC_4",
+          "PC_5"
+        ),
+        drop = FALSE
+      ],
+      na.rm = TRUE
+    ),
+
+    2
+  )
+
+
+  y$Promedio_UT <- round(
+
+    rowMeans(
+      y[
+        ,
+        c(
+          "UT_1",
+          "UT_2",
+          "UT_3"
+        ),
+        drop = FALSE
+      ],
+      na.rm = TRUE
+    ),
+
+    2
+  )
+
+
+  y$Nota_Corta <- as.numeric(
+    x$Nota_Corta
+  )
+
+  y$Nota_Larga <- y$Nota_Corta
+
+
+  y
+}
+
+
+convertir_larga_alumnos <- function(x){
+
   if(
-    nrow(datos_eq)>0 &&
-    length(equipos)>0
+    is.null(x) ||
+    nrow(x)==0
   ){
 
-    datos_eq$Equipo <- as.character(
-      datos_eq$Equipo
+    return(
+      empty_larga_alumnos
     )
-
-
-    for(i in 1:length(equipos)){
-
-      eq <- equipos[i]
-
-
-      datos <- datos_eq[
-
-        trimws(
-          datos_eq$Equipo
-        ) == trimws(
-          eq
-        ),
-
-      ]
-
-
-      if(nrow(datos)>0){
-
-        prom_eq$Memoria[i] <- promedio(
-          datos$Memoria
-        )
-
-        prom_eq$Simulacion[i] <- promedio(
-          datos$Simulacion
-        )
-
-        prom_eq$Defensa[i] <- promedio(
-          datos$Defensa
-        )
-
-        prom_eq$Codigo[i] <- promedio(
-          datos$Codigo
-        )
-
-        prom_eq$Nota_Final[i] <- promedio(
-          datos$Nota_Final
-        )
-      }
-    }
   }
 
 
-  if(nrow(prom_eq)>0){
+  y <- data.frame(
+
+    ID = as.character(
+      x$ID
+    ),
+
+    Fecha = as.character(
+      x$Fecha
+    ),
+
+    Semestre = as.character(
+      x$Semestre
+    ),
+
+    Profesor = as.character(
+      x$Profesor
+    ),
+
+    Materia_Grupo = as.character(
+      x$Materia_Grupo
+    ),
+
+    Equipo = as.character(
+      x$Equipo
+    ),
+
+    Alumno = as.character(
+      x$Alumno
+    ),
+
+    PC_1 = as.numeric(
+      x$Comprension
+    ),
+
+    PC_2 = as.numeric(
+      x$Modelo
+    ),
+
+    PC_3 = as.numeric(
+      x$Modelo
+    ),
+
+    PC_4 = as.numeric(
+      x$Formacion
+    ),
+
+    PC_5 = as.numeric(
+      x$Formacion
+    ),
+
+    UT_1 = as.numeric(
+      x$Tecnologia
+    ),
+
+    UT_2 = as.numeric(
+      x$Tecnologia
+    ),
+
+    UT_3 = as.numeric(
+      x$Tecnologia
+    ),
+
+    stringsAsFactors = FALSE
+  )
+
+
+  y$Promedio_PC <- round(
+
+    rowMeans(
+      y[
+        ,
+        c(
+          "PC_1",
+          "PC_2",
+          "PC_3",
+          "PC_4",
+          "PC_5"
+        ),
+        drop = FALSE
+      ],
+      na.rm = TRUE
+    ),
+
+    2
+  )
+
+
+  y$Promedio_UT <- round(
+
+    rowMeans(
+      y[
+        ,
+        c(
+          "UT_1",
+          "UT_2",
+          "UT_3"
+        ),
+        drop = FALSE
+      ],
+      na.rm = TRUE
+    ),
+
+    2
+  )
+
+
+  y$Nota_Corta <- as.numeric(
+    x$Nota_Corta
+  )
+
+  y$Nota_Larga <- y$Nota_Corta
+
+
+  y
+}
+
+
+#************************************************************************
+#AVERAGES
+
+calcular_promedios <- function(
+  datos_eq,
+  datos_al,
+  lista
+){
+
+  lista <- lista_activa(
+    lista
+  )
+
+
+  #************************************************************************
+  #TEAMS
+
+  equipos_lista <- if(
+    nrow(lista)>0
+  ){
+    as.character(
+      lista$Equipo
+    )
+  }else{
+    character()
+  }
+
+
+  equipos_datos <- if(
+    !is.null(datos_eq) &&
+    nrow(datos_eq)>0 &&
+    "Equipo" %in% names(datos_eq)
+  ){
+    as.character(
+      datos_eq$Equipo
+    )
+  }else{
+    character()
+  }
+
+
+  equipos <- unique(
+    c(
+      equipos_lista,
+      equipos_datos
+    )
+  )
+
+
+  equipos <- equipos[
+    !is.na(equipos) &
+    trimws(equipos)!=""
+  ]
+
+
+  if(length(equipos)==0){
+
+    prom_eq <- empty_prom_equipos
+
+  }else{
+
+    prom_eq <- data.frame(
+
+      Equipo = equipos,
+
+      Comprension = rep(
+        NA_real_,
+        length(equipos)
+      ),
+
+      Prototipo = rep(
+        NA_real_,
+        length(equipos)
+      ),
+
+      Modelo = rep(
+        NA_real_,
+        length(equipos)
+      ),
+
+      Tecnologia = rep(
+        NA_real_,
+        length(equipos)
+      ),
+
+      Comunicacion = rep(
+        NA_real_,
+        length(equipos)
+      ),
+
+      Formacion = rep(
+        NA_real_,
+        length(equipos)
+      ),
+
+      Nota_Corta = rep(
+        NA_real_,
+        length(equipos)
+      ),
+
+      Nota_Larga = rep(
+        NA_real_,
+        length(equipos)
+      ),
+
+      stringsAsFactors = FALSE
+    )
+
+
+    if(
+      !is.null(datos_eq) &&
+      nrow(datos_eq)>0
+    ){
+
+      datos_eq$Equipo <- as.character(
+        datos_eq$Equipo
+      )
+
+
+      for(i in seq_along(equipos)){
+
+        eq <- equipos[i]
+
+
+        d <- datos_eq[
+
+          trimws(
+            datos_eq$Equipo
+          ) == trimws(
+            eq
+          ),
+
+          ,
+
+          drop = FALSE
+        ]
+
+
+        if(nrow(d)>0){
+
+          prom_eq$Comprension[i] <- promedio(
+            d$Comprension
+          )
+
+          prom_eq$Prototipo[i] <- promedio(
+            d$Prototipo
+          )
+
+          prom_eq$Modelo[i] <- promedio(
+            d$Modelo
+          )
+
+          prom_eq$Tecnologia[i] <- promedio(
+            d$Tecnologia
+          )
+
+          prom_eq$Comunicacion[i] <- promedio(
+            d$Comunicacion
+          )
+
+          prom_eq$Formacion[i] <- promedio(
+            d$Formacion
+          )
+
+          prom_eq$Nota_Corta[i] <- promedio(
+            d$Nota_Corta
+          )
+
+          #same final average
+          prom_eq$Nota_Larga[i] <- prom_eq$Nota_Corta[i]
+        }
+      }
+    }
+
 
     prom_eq <- rbind(
 
@@ -1361,24 +1448,36 @@ actualiza_promedios <- function(
 
         Equipo = "PROMEDIO GENERAL",
 
-        Memoria = promedio(
-          prom_eq$Memoria
+        Comprension = promedio(
+          prom_eq$Comprension
         ),
 
-        Simulacion = promedio(
-          prom_eq$Simulacion
+        Prototipo = promedio(
+          prom_eq$Prototipo
         ),
 
-        Defensa = promedio(
-          prom_eq$Defensa
+        Modelo = promedio(
+          prom_eq$Modelo
         ),
 
-        Codigo = promedio(
-          prom_eq$Codigo
+        Tecnologia = promedio(
+          prom_eq$Tecnologia
         ),
 
-        Nota_Final = promedio(
-          prom_eq$Nota_Final
+        Comunicacion = promedio(
+          prom_eq$Comunicacion
+        ),
+
+        Formacion = promedio(
+          prom_eq$Formacion
+        ),
+
+        Nota_Corta = promedio(
+          prom_eq$Nota_Corta
+        ),
+
+        Nota_Larga = promedio(
+          prom_eq$Nota_Corta
         ),
 
         stringsAsFactors = FALSE
@@ -1387,113 +1486,217 @@ actualiza_promedios <- function(
   }
 
 
-  sheet_write(
-
-    prom_eq,
-
-    ss = google_equipos,
-
-    sheet = "Promedios"
-  )
-
-
   #************************************************************************
   #STUDENTS
 
-  prom_al <- lista
+  pares_lista <- lista
 
 
-  prom_al$Memoria <- rep(
-    NA_real_,
-    nrow(prom_al)
-  )
-
-  prom_al$Simulacion <- rep(
-    NA_real_,
-    nrow(prom_al)
-  )
-
-  prom_al$Defensa <- rep(
-    NA_real_,
-    nrow(prom_al)
-  )
-
-  prom_al$Codigo <- rep(
-    NA_real_,
-    nrow(prom_al)
-  )
-
-  prom_al$Nota_Final <- rep(
-    NA_real_,
-    nrow(prom_al)
-  )
-
-
-  if(
+  pares_datos <- if(
+    !is.null(datos_al) &&
     nrow(datos_al)>0 &&
-    nrow(prom_al)>0
+    all(
+      c(
+        "Equipo",
+        "Alumno"
+      ) %in% names(datos_al)
+    )
   ){
 
-    datos_al$Equipo <- as.character(
-      datos_al$Equipo
-    )
+    unique(
 
-    datos_al$Alumno <- as.character(
-      datos_al$Alumno
-    )
+      data.frame(
 
-
-    for(i in 1:nrow(prom_al)){
-
-      estudiante <- prom_al$Alumno[i]
-
-      equipo_est <- prom_al$Equipo[i]
-
-
-      datos <- datos_al[
-
-        trimws(
-          datos_al$Alumno
-        ) == trimws(
-          estudiante
-        ) &
-
-        trimws(
+        Equipo = as.character(
           datos_al$Equipo
-        ) == trimws(
-          equipo_est
         ),
 
-      ]
+        Alumno = as.character(
+          datos_al$Alumno
+        ),
 
+        stringsAsFactors = FALSE
+      )
+    )
 
-      if(nrow(datos)>0){
+  }else{
 
-        prom_al$Memoria[i] <- promedio(
-          datos$Memoria
-        )
-
-        prom_al$Simulacion[i] <- promedio(
-          datos$Simulacion
-        )
-
-        prom_al$Defensa[i] <- promedio(
-          datos$Defensa
-        )
-
-        prom_al$Codigo[i] <- promedio(
-          datos$Codigo
-        )
-
-        prom_al$Nota_Final[i] <- promedio(
-          datos$Nota_Final
-        )
-      }
-    }
+    data.frame(
+      Equipo = character(),
+      Alumno = character(),
+      stringsAsFactors = FALSE
+    )
   }
 
 
-  if(nrow(prom_al)>0){
+  pares <- unique(
+
+    rbind(
+      pares_lista,
+      pares_datos
+    )
+  )
+
+
+  if(nrow(pares)>0){
+
+    pares$Equipo <- trimws(
+      as.character(
+        pares$Equipo
+      )
+    )
+
+    pares$Alumno <- trimws(
+      as.character(
+        pares$Alumno
+      )
+    )
+
+
+    pares <- pares[
+
+      !is.na(pares$Equipo) &
+      !is.na(pares$Alumno) &
+      pares$Equipo!="" &
+      pares$Alumno!="",
+
+      ,
+
+      drop = FALSE
+    ]
+  }
+
+
+  if(nrow(pares)==0){
+
+    prom_al <- empty_prom_alumnos
+
+  }else{
+
+    prom_al <- data.frame(
+
+      Equipo = pares$Equipo,
+      Alumno = pares$Alumno,
+
+      Comprension = rep(
+        NA_real_,
+        nrow(pares)
+      ),
+
+      Prototipo = rep(
+        NA_real_,
+        nrow(pares)
+      ),
+
+      Modelo = rep(
+        NA_real_,
+        nrow(pares)
+      ),
+
+      Tecnologia = rep(
+        NA_real_,
+        nrow(pares)
+      ),
+
+      Comunicacion = rep(
+        NA_real_,
+        nrow(pares)
+      ),
+
+      Formacion = rep(
+        NA_real_,
+        nrow(pares)
+      ),
+
+      Nota_Corta = rep(
+        NA_real_,
+        nrow(pares)
+      ),
+
+      Nota_Larga = rep(
+        NA_real_,
+        nrow(pares)
+      ),
+
+      stringsAsFactors = FALSE
+    )
+
+
+    if(
+      !is.null(datos_al) &&
+      nrow(datos_al)>0
+    ){
+
+      datos_al$Equipo <- as.character(
+        datos_al$Equipo
+      )
+
+      datos_al$Alumno <- as.character(
+        datos_al$Alumno
+      )
+
+
+      for(i in 1:nrow(prom_al)){
+
+        eq <- prom_al$Equipo[i]
+        al <- prom_al$Alumno[i]
+
+
+        d <- datos_al[
+
+          trimws(
+            datos_al$Equipo
+          ) == trimws(
+            eq
+          ) &
+
+          trimws(
+            datos_al$Alumno
+          ) == trimws(
+            al
+          ),
+
+          ,
+
+          drop = FALSE
+        ]
+
+
+        if(nrow(d)>0){
+
+          prom_al$Comprension[i] <- promedio(
+            d$Comprension
+          )
+
+          prom_al$Prototipo[i] <- promedio(
+            d$Prototipo
+          )
+
+          prom_al$Modelo[i] <- promedio(
+            d$Modelo
+          )
+
+          prom_al$Tecnologia[i] <- promedio(
+            d$Tecnologia
+          )
+
+          prom_al$Comunicacion[i] <- promedio(
+            d$Comunicacion
+          )
+
+          prom_al$Formacion[i] <- promedio(
+            d$Formacion
+          )
+
+          prom_al$Nota_Corta[i] <- promedio(
+            d$Nota_Corta
+          )
+
+          prom_al$Nota_Larga[i] <- prom_al$Nota_Corta[i]
+        }
+      }
+    }
+
 
     prom_al <- rbind(
 
@@ -1502,27 +1705,38 @@ actualiza_promedios <- function(
       data.frame(
 
         Equipo = "",
-
         Alumno = "PROMEDIO GENERAL",
 
-        Memoria = promedio(
-          prom_al$Memoria
+        Comprension = promedio(
+          prom_al$Comprension
         ),
 
-        Simulacion = promedio(
-          prom_al$Simulacion
+        Prototipo = promedio(
+          prom_al$Prototipo
         ),
 
-        Defensa = promedio(
-          prom_al$Defensa
+        Modelo = promedio(
+          prom_al$Modelo
         ),
 
-        Codigo = promedio(
-          prom_al$Codigo
+        Tecnologia = promedio(
+          prom_al$Tecnologia
         ),
 
-        Nota_Final = promedio(
-          prom_al$Nota_Final
+        Comunicacion = promedio(
+          prom_al$Comunicacion
+        ),
+
+        Formacion = promedio(
+          prom_al$Formacion
+        ),
+
+        Nota_Corta = promedio(
+          prom_al$Nota_Corta
+        ),
+
+        Nota_Larga = promedio(
+          prom_al$Nota_Corta
         ),
 
         stringsAsFactors = FALSE
@@ -1531,23 +1745,119 @@ actualiza_promedios <- function(
   }
 
 
-  sheet_write(
-
-    prom_al,
-
-    ss = google_alumnos,
-
-    sheet = "Promedios"
-  )
-
-
   list(
-
     equipos = prom_eq,
-
     alumnos = prom_al
   )
 }
+
+
+#************************************************************************
+#CREATE MISSING TABS
+#
+#No spreadsheet is created here.
+#Only sheets/tabs are added inside the 3 files created in Montufar's Drive.
+#************************************************************************
+
+admin_sheets <- sheet_names(
+  google_admin
+)
+
+equipos_sheets <- sheet_names(
+  google_equipos
+)
+
+alumnos_sheets <- sheet_names(
+  google_alumnos
+)
+
+
+ensure_sheet(
+  google_admin,
+  sheet_lista,
+  empty_lista,
+  admin_sheets
+)
+
+
+ensure_sheet(
+  google_admin,
+  "Rubrica Corta",
+  rubrica,
+  admin_sheets
+)
+
+
+ensure_sheet(
+  google_admin,
+  "Rubrica Larga",
+  rubrica_larga,
+  admin_sheets
+)
+
+
+ensure_sheet(
+  google_equipos,
+  sheet_cal_equipos,
+  empty_equipos,
+  equipos_sheets
+)
+
+
+ensure_sheet(
+  google_equipos,
+  sheet_prom_equipos,
+  empty_prom_equipos,
+  equipos_sheets
+)
+
+
+ensure_sheet(
+  google_equipos,
+  sheet_larga_equipos,
+  empty_larga_equipos,
+  equipos_sheets
+)
+
+
+ensure_sheet(
+  google_alumnos,
+  sheet_cal_alumnos,
+  empty_alumnos,
+  alumnos_sheets
+)
+
+
+ensure_sheet(
+  google_alumnos,
+  sheet_prom_alumnos,
+  empty_prom_alumnos,
+  alumnos_sheets
+)
+
+
+ensure_sheet(
+  google_alumnos,
+  sheet_larga_alumnos,
+  empty_larga_alumnos,
+  alumnos_sheets
+)
+
+
+#************************************************************************
+#URLS
+
+google_admin_url <- google_url(
+  config$google_admin_sheet_id
+)
+
+google_equipos_url <- google_url(
+  config$google_equipos_sheet_id
+)
+
+google_alumnos_url <- google_url(
+  config$google_alumnos_sheet_id
+)
 
 
 #************************************************************************
@@ -1568,38 +1878,24 @@ ui <- dashboardPage(
 
     sidebarMenu(
 
-
       menuItem(
-
         "Evaluar Equipo",
-
         tabName = "evaluacion",
-
         icon = icon("users")
       ),
 
-
       menuItem(
-
         "Resultados",
-
         tabName = "resultados",
-
         icon = icon("bar-chart")
       ),
 
-
       menuItem(
-
         "Administracion",
-
         tabName = "admin",
-
         icon = icon("lock")
       )
-
     )
-
   ),
 
 
@@ -1607,8 +1903,7 @@ ui <- dashboardPage(
 
     tabItems(
 
-
-      #********************************************************************
+      #************************************************************************
       #EVALUATION
 
       tabItem(
@@ -1618,7 +1913,6 @@ ui <- dashboardPage(
 
         fluidRow(
 
-
           box(
 
             title = paste(
@@ -1627,24 +1921,18 @@ ui <- dashboardPage(
             ),
 
             status = "primary",
-
             solidHeader = TRUE,
-
             width = 4,
 
 
             textInput(
-
               "profesor",
-
               "Profesor evaluador:"
             ),
 
 
             textInput(
-
               "materia",
-
               "Materia / grupo:"
             ),
 
@@ -1666,7 +1954,6 @@ ui <- dashboardPage(
 
 
             tags$small(
-
               "Todos los alumnos seleccionados reciben la misma calificacion."
             ),
 
@@ -1676,50 +1963,43 @@ ui <- dashboardPage(
 
 
             actionButton(
-
               "guardar",
-
               "Enviar Calificaciones",
-
               icon = icon("paper-plane"),
-
               class = "btn-success"
             )
-
           ),
 
 
           box(
 
-            title = "Rubrica",
+            title = "Rubrica corta",
 
             status = "warning",
-
             solidHeader = TRUE,
-
             width = 8,
+
+
+            tags$p(
+              "Escala de 0 a 10. La nota global de la rubrica larga siempre sera igual a la nota de esta rubrica."
+            ),
 
 
             uiOutput(
               "inputs_grado"
             )
-
           )
-
         ),
 
 
         fluidRow(
-
 
           box(
 
             title = "Resultado",
 
             status = "info",
-
             solidHeader = TRUE,
-
             width = 12,
 
 
@@ -1729,23 +2009,17 @@ ui <- dashboardPage(
 
 
             h3(
-
               align = "right",
-
               textOutput(
                 "preview_total"
               )
-
             )
-
           )
-
         )
-
       ),
 
 
-      #********************************************************************
+      #************************************************************************
       #RESULTS
 
       tabItem(
@@ -1755,7 +2029,6 @@ ui <- dashboardPage(
 
         fluidRow(
 
-
           box(
 
             title = paste(
@@ -1764,10 +2037,18 @@ ui <- dashboardPage(
             ),
 
             status = "primary",
-
             solidHeader = TRUE,
-
             width = 4,
+
+
+            actionButton(
+              "refrescar_resultados",
+              "Actualizar desde Google",
+              icon = icon("refresh")
+            ),
+
+
+            hr(),
 
 
             selectInput(
@@ -1777,12 +2058,9 @@ ui <- dashboardPage(
               "Mostrar:",
 
               choices = c(
-
                 "Equipos" = "equipos",
-
                 "Alumnos" = "alumnos"
               )
-
             ),
 
 
@@ -1793,19 +2071,14 @@ ui <- dashboardPage(
               "Calificacion:",
 
               choices = c(
-
-                "Nota Final" = "Nota_Final",
-
-                "Memoria Tecnica" = "Memoria",
-
-                "Simulacion Computacional" = "Simulacion",
-
-                "Defensa Oral" = "Defensa",
-
-                "Documentacion y Codigo" = "Codigo"
-
+                "Nota global" = "Nota_Corta",
+                "Comprension conceptual" = "Comprension",
+                "Calidad del prototipo" = "Prototipo",
+                "Modelo matematico" = "Modelo",
+                "Tecnologia y recursos" = "Tecnologia",
+                "Comunicacion y trabajo en equipo" = "Comunicacion",
+                "Formacion continua" = "Formacion"
               )
-
             ),
 
 
@@ -1821,8 +2094,20 @@ ui <- dashboardPage(
               textOutput(
                 "promedio_general"
               )
-            )
+            ),
 
+
+            hr(),
+
+
+            h4(
+              "Comprobacion"
+            ),
+
+
+            tableOutput(
+              "comparacion_rubricas"
+            )
           ),
 
 
@@ -1831,50 +2116,38 @@ ui <- dashboardPage(
             title = "Grafica",
 
             status = "info",
-
             solidHeader = TRUE,
-
             width = 8,
 
 
             plotOutput(
-
               "grafica",
-
               height = "450px"
             )
-
           )
-
         ),
 
 
         fluidRow(
-
 
           box(
 
             title = "Promedios",
 
             status = "success",
-
             solidHeader = TRUE,
-
             width = 12,
 
 
             tableOutput(
               "tabla_promedios"
             )
-
           )
-
         )
-
       ),
 
 
-      #********************************************************************
+      #************************************************************************
       #ADMIN
 
       tabItem(
@@ -1884,93 +2157,160 @@ ui <- dashboardPage(
 
         fluidRow(
 
-
           box(
 
             title = "Administracion",
 
             status = "danger",
-
             solidHeader = TRUE,
-
             width = 12,
 
 
             uiOutput(
               "admin_ui"
             )
-
           )
-
         )
-
       )
-
     )
-
   )
-
 )
 
 
 #************************************************************************
 #SERVER
 
-server <- function(input,output,session){
+server <- function(
+  input,
+  output,
+  session
+){
 
 
   #************************************************************************
-  #LOAD
+  #LOAD CURRENT DATA
 
-  lista_inicio <- get_alumnos()
+  lista_inicio <- normalizar_lista(
+
+    read_table(
+      google_admin,
+      sheet_lista,
+      empty_lista
+    )
+  )
 
 
-  equipos_inicio <- read_old(
-
+  equipos_inicio <- read_table(
     google_equipos,
-
-    "Calificaciones"
+    sheet_cal_equipos,
+    empty_equipos
   )
 
 
-  alumnos_inicio <- read_old(
-
+  alumnos_inicio <- read_table(
     google_alumnos,
-
-    "Calificaciones"
+    sheet_cal_alumnos,
+    empty_alumnos
   )
 
 
-  promedios_inicio <- actualiza_promedios(
-
-    equipos_inicio,
-
-    alumnos_inicio,
-
+  lista_admin <- reactiveVal(
     lista_inicio
   )
 
 
   alumnos_actuales <- reactiveVal(
-    lista_inicio
+    lista_activa(
+      lista_inicio
+    )
   )
 
 
-  guardados <- reactiveValues(
+  datos_equipos <- reactiveVal(
+    equipos_inicio
+  )
 
-    equipos = equipos_inicio,
 
-    alumnos = alumnos_inicio,
+  datos_alumnos <- reactiveVal(
+    alumnos_inicio
+  )
 
-    prom_equipos = promedios_inicio$equipos,
 
-    prom_alumnos = promedios_inicio$alumnos
+  promedios_local <- reactiveVal(
+
+    calcular_promedios(
+      equipos_inicio,
+      alumnos_inicio,
+      lista_inicio
+    )
   )
 
 
   admin_ok <- reactiveVal(
     FALSE
   )
+
+
+  #************************************************************************
+  #REFRESH
+
+  refrescar_datos <- function(){
+
+    lista_nueva <- normalizar_lista(
+
+      read_table(
+        google_admin,
+        sheet_lista,
+        empty_lista
+      )
+    )
+
+
+    eq_nuevo <- read_table(
+      google_equipos,
+      sheet_cal_equipos,
+      empty_equipos
+    )
+
+
+    al_nuevo <- read_table(
+      google_alumnos,
+      sheet_cal_alumnos,
+      empty_alumnos
+    )
+
+
+    lista_admin(
+      lista_nueva
+    )
+
+
+    alumnos_actuales(
+      lista_activa(
+        lista_nueva
+      )
+    )
+
+
+    datos_equipos(
+      eq_nuevo
+    )
+
+
+    datos_alumnos(
+      al_nuevo
+    )
+
+
+    promedios_local(
+
+      calcular_promedios(
+        eq_nuevo,
+        al_nuevo,
+        lista_nueva
+      )
+    )
+  }
 
 
   #************************************************************************
@@ -1991,9 +2331,7 @@ server <- function(input,output,session){
           strong(
             "No hay alumnos cargados para este semestre."
           )
-
         )
-
       )
     }
 
@@ -2012,9 +2350,7 @@ server <- function(input,output,session){
       choices = equipos,
 
       selected = equipos[1]
-
     )
-
   })
 
 
@@ -2041,9 +2377,7 @@ server <- function(input,output,session){
 
 
     miembros <- lista$Alumno[
-
       lista$Equipo == input$equipo
-
     ]
 
 
@@ -2056,14 +2390,12 @@ server <- function(input,output,session){
       choices = miembros,
 
       selected = miembros
-
     )
-
   })
 
 
   #************************************************************************
-  #RUBRIC
+  #RUBRIC INPUTS
 
   output$inputs_grado <- renderUI({
 
@@ -2080,16 +2412,18 @@ server <- function(input,output,session){
         h4(
 
           paste0(
-
             i,
             ". ",
             rubrica$Aspecto[i],
             " (",
             rubrica$Peso[i],
             "%)"
-
           )
+        ),
 
+
+        tags$p(
+          rubrica$Descripcion[i]
         ),
 
 
@@ -2102,32 +2436,25 @@ server <- function(input,output,session){
 
           "Calificacion:",
 
-          value = 100,
+          value = 10,
 
           min = 0,
 
-          max = 100,
+          max = 10,
 
-          step = 5
-
+          step = 0.5
         ),
 
 
         hr()
-
       )
-
     }
 
 
     do.call(
-
       tagList,
-
       cosas
-
     )
-
   })
 
 
@@ -2138,11 +2465,8 @@ server <- function(input,output,session){
 
 
     grado <- rep(
-
-      100,
-
+      10,
       nrow(rubrica)
-
     )
 
 
@@ -2155,13 +2479,12 @@ server <- function(input,output,session){
           "aspecto",
           i
         )
-
       ]]
 
 
       if(is.null(n)){
 
-        n <- 100
+        n <- 10
       }
 
 
@@ -2191,19 +2514,14 @@ server <- function(input,output,session){
       Calificacion = grado,
 
       Aporte = round(
-
         grado *
         rubrica$Peso /
         100,
-
         2
-
       ),
 
       check.names = FALSE
-
     )
-
 
   },digits = 2)
 
@@ -2211,357 +2529,1570 @@ server <- function(input,output,session){
   output$preview_total <- renderText({
 
 
-    paste(
-
-      "Calificacion Final:",
-
-      formatC(
-
-        get_final(
-          grado_actual()
-        ),
-
-        format = "f",
-
-        digits = 2
-      ),
-
-      "/ 100"
-
+    nota <- get_final(
+      grado_actual()
     )
 
+
+    paste0(
+      "Rubrica corta: ",
+      formatC(
+        nota,
+        format = "f",
+        digits = 2
+      ),
+      " / 10    |    Rubrica larga: ",
+      formatC(
+        nota,
+        format = "f",
+        digits = 2
+      ),
+      " / 10"
+    )
   })
 
 
-#************************************************************************
-#SAVE
+  #************************************************************************
+  #SAVE
 
-  observeEvent(input$guardar,{
+  observeEvent(
+    input$guardar,
+    {
 
 
-    if(nrow(alumnos_actuales())==0){
+      if(nrow(alumnos_actuales())==0){
 
-      showNotification(
+        showNotification(
+          "Primero se debe cargar la lista de alumnos.",
+          type = "error"
+        )
 
-        "Primero se debe cargar la lista de alumnos.",
+        return()
+      }
 
-        type = "error"
 
+      if(
+        is.null(input$profesor) ||
+        trimws(input$profesor)==""
+      ){
+
+        showNotification(
+          "Escribe el nombre del profesor evaluador.",
+          type = "error"
+        )
+
+        return()
+      }
+
+
+      if(
+        is.null(input$materia) ||
+        trimws(input$materia)==""
+      ){
+
+        showNotification(
+          "Falta la materia o grupo.",
+          type = "error"
+        )
+
+        return()
+      }
+
+
+      if(
+        is.null(input$equipo) ||
+        trimws(input$equipo)==""
+      ){
+
+        showNotification(
+          "Selecciona un equipo.",
+          type = "error"
+        )
+
+        return()
+      }
+
+
+      if(
+        is.null(input$integrantes) ||
+        length(input$integrantes)==0
+      ){
+
+        showNotification(
+          "Selecciona al menos un integrante.",
+          type = "error"
+        )
+
+        return()
+      }
+
+
+      grado <- grado_actual()
+
+
+      if(
+
+        any(
+          is.na(grado) |
+          grado < 0 |
+          grado > 10
+        )
+      ){
+
+        showNotification(
+          "Las calificaciones deben estar entre 0 y 10.",
+          type = "error"
+        )
+
+        return()
+      }
+
+
+      #************************************************************************
+      #ID
+
+      id <- paste0(
+
+        format(
+          Sys.time(),
+          "%Y%m%d%H%M%S"
+        ),
+
+        "_",
+
+        sample(
+          100:999,
+          1
+        )
       )
 
-      return()
-    }
 
-
-    if(trimws(input$profesor)==""){
-
-      showNotification(
-
-        "Falta el profesor evaluador.",
-
-        type = "error"
-      )
-
-      return()
-    }
-
-
-    if(trimws(input$materia)==""){
-
-      showNotification(
-
-        "Falta la materia o grupo.",
-
-        type = "error"
-      )
-
-      return()
-    }
-
-
-    if(
-      is.null(input$integrantes) ||
-      length(input$integrantes)==0
-    ){
-
-      showNotification(
-
-        "Selecciona al menos un integrante.",
-
-        type = "error"
-      )
-
-      return()
-    }
-
-
-    grado <- grado_actual()
-
-
-    if(
-
-      any(
-
-        grado < 0 |
-        grado > 100 |
-        is.na(grado)
-
-      )
-
-    ){
-
-      showNotification(
-
-        "Las calificaciones deben estar entre 0 y 100.",
-
-        type = "error"
-      )
-
-      return()
-    }
-
-
-############################################################################
-#ID
-
-    id <- paste0(
-
-      format(
-
+      fecha <- format(
         Sys.time(),
-
-        "%Y%m%d%H%M%S"
-      ),
-
-      "_",
-
-      sample(
-        100:999,
-        1
+        "%Y-%m-%d %H:%M:%S"
       )
 
-    )
+
+      equipo_actual <- as.character(
+        input$equipo
+      )
 
 
-    fecha <- format(
-
-      Sys.time(),
-
-      "%Y-%m-%d %H:%M:%S"
-    )
+      miembros <- input$integrantes
 
 
-    equipo_actual <- as.character(
-      input$equipo
-    )
-
-
-    miembros <- input$integrantes
-
-
-    nota_final <- round(
-
-      get_final(
+      nota_corta <- get_final(
         grado
-      ),
-
-      2
-    )
+      )
 
 
-    #************************************************************************
-    #TEAM
-
-    nuevo_equipo <- data.frame(
-
-      ID = id,
-
-      Fecha = fecha,
-
-      Semestre = semestre,
-
-      Profesor = trimws(
-        input$profesor
-      ),
-
-      Materia_Grupo = trimws(
-        input$materia
-      ),
-
-      Equipo = equipo_actual,
-
-      Integrantes = paste(
-        miembros,
-        collapse = ", "
-      ),
-
-      Memoria = grado[1],
-
-      Simulacion = grado[2],
-
-      Defensa = grado[3],
-
-      Codigo = grado[4],
-
-      Nota_Final = nota_final,
-
-      stringsAsFactors = FALSE
-    )
+      #the final long rubric grade MUST be identical
+      nota_larga <- nota_corta
 
 
-    #************************************************************************
-    #STUDENTS
+      #************************************************************************
+      #SHORT TEAM ROW
 
-    nuevos_alumnos <- data.frame(
+      nuevo_equipo <- data.frame(
 
-      ID = rep(
-        id,
-        length(miembros)
-      ),
+        ID = id,
+        Fecha = fecha,
+        Semestre = semestre,
 
-      Fecha = rep(
-        fecha,
-        length(miembros)
-      ),
-
-      Semestre = rep(
-        semestre,
-        length(miembros)
-      ),
-
-      Profesor = rep(
-
-        trimws(
+        Profesor = trimws(
           input$profesor
         ),
 
-        length(miembros)
-      ),
-
-      Materia_Grupo = rep(
-
-        trimws(
+        Materia_Grupo = trimws(
           input$materia
         ),
 
-        length(miembros)
-      ),
+        Equipo = equipo_actual,
 
-      Equipo = rep(
-        equipo_actual,
-        length(miembros)
-      ),
+        Integrantes = paste(
+          miembros,
+          collapse = ", "
+        ),
 
-      Alumno = miembros,
+        Comprension = grado[1],
+        Prototipo = grado[2],
+        Modelo = grado[3],
+        Tecnologia = grado[4],
+        Comunicacion = grado[5],
+        Formacion = grado[6],
 
-      Memoria = rep(
-        grado[1],
-        length(miembros)
-      ),
+        Nota_Corta = nota_corta,
 
-      Simulacion = rep(
-        grado[2],
-        length(miembros)
-      ),
-
-      Defensa = rep(
-        grado[3],
-        length(miembros)
-      ),
-
-      Codigo = rep(
-        grado[4],
-        length(miembros)
-      ),
-
-      Nota_Final = rep(
-        nota_final,
-        length(miembros)
-      ),
-
-      stringsAsFactors = FALSE
-    )
-
-
-#************************************************************************
-#GOOGLE SAVE
-
-    resultado <- tryCatch({
-
-
-      sheet_append(
-
-        google_equipos,
-
-        nuevo_equipo,
-
-        sheet = "Calificaciones"
+        stringsAsFactors = FALSE
       )
 
 
-      sheet_append(
+      #************************************************************************
+      #SHORT STUDENT ROWS
 
-        google_alumnos,
+      nuevos_alumnos <- data.frame(
 
-        nuevos_alumnos,
+        ID = rep(
+          id,
+          length(miembros)
+        ),
 
-        sheet = "Calificaciones"
+        Fecha = rep(
+          fecha,
+          length(miembros)
+        ),
+
+        Semestre = rep(
+          semestre,
+          length(miembros)
+        ),
+
+        Profesor = rep(
+          trimws(
+            input$profesor
+          ),
+          length(miembros)
+        ),
+
+        Materia_Grupo = rep(
+          trimws(
+            input$materia
+          ),
+          length(miembros)
+        ),
+
+        Equipo = rep(
+          equipo_actual,
+          length(miembros)
+        ),
+
+        Alumno = miembros,
+
+        Comprension = rep(
+          grado[1],
+          length(miembros)
+        ),
+
+        Prototipo = rep(
+          grado[2],
+          length(miembros)
+        ),
+
+        Modelo = rep(
+          grado[3],
+          length(miembros)
+        ),
+
+        Tecnologia = rep(
+          grado[4],
+          length(miembros)
+        ),
+
+        Comunicacion = rep(
+          grado[5],
+          length(miembros)
+        ),
+
+        Formacion = rep(
+          grado[6],
+          length(miembros)
+        ),
+
+        Nota_Corta = rep(
+          nota_corta,
+          length(miembros)
+        ),
+
+        stringsAsFactors = FALSE
       )
 
 
-      #************************************************************
-      #LOCAL
+      #************************************************************************
+      #LONG RUBRIC ROWS
 
-      if(nrow(guardados$equipos)==0){
+      largo_equipo <- convertir_larga_equipos(
+        nuevo_equipo
+      )
 
-        guardados$equipos <- nuevo_equipo
+
+      largos_alumnos <- convertir_larga_alumnos(
+        nuevos_alumnos
+      )
+
+
+      #extra check
+      largo_equipo$Nota_Larga <- nota_larga
+
+      largos_alumnos$Nota_Larga <- rep(
+        nota_larga,
+        nrow(largos_alumnos)
+      )
+
+
+      #************************************************************************
+      #GOOGLE SAVE
+
+      resultado <- tryCatch({
+
+
+        withProgress(
+
+          message = "Guardando evaluacion...",
+
+          value = 0.2,
+
+          {
+
+
+            sheet_append(
+              google_equipos,
+              nuevo_equipo,
+              sheet = sheet_cal_equipos
+            )
+
+
+            incProgress(
+              0.2
+            )
+
+
+            sheet_append(
+              google_alumnos,
+              nuevos_alumnos,
+              sheet = sheet_cal_alumnos
+            )
+
+
+            incProgress(
+              0.2
+            )
+
+
+            sheet_append(
+              google_equipos,
+              largo_equipo,
+              sheet = sheet_larga_equipos
+            )
+
+
+            incProgress(
+              0.2
+            )
+
+
+            sheet_append(
+              google_alumnos,
+              largos_alumnos,
+              sheet = sheet_larga_alumnos
+            )
+
+
+            incProgress(
+              0.2
+            )
+          }
+        )
+
+
+        TRUE
+
+      },error=function(e){
+
+
+        showNotification(
+
+          paste(
+            "Google Sheets error:",
+            e$message
+          ),
+
+          type = "error",
+
+          duration = 12
+        )
+
+
+        FALSE
+      })
+
+
+      if(!resultado){
+
+        return()
+      }
+
+
+      #************************************************************************
+      #LOCAL UPDATE
+
+      eq_actual <- datos_equipos()
+
+
+      if(nrow(eq_actual)==0){
+
+        eq_actual <- nuevo_equipo
 
       }else{
 
-        guardados$equipos <- rbind(
-
-          guardados$equipos,
-
+        eq_actual <- rbind(
+          eq_actual,
           nuevo_equipo
         )
       }
 
 
-      if(nrow(guardados$alumnos)==0){
+      al_actual <- datos_alumnos()
 
-        guardados$alumnos <- nuevos_alumnos
+
+      if(nrow(al_actual)==0){
+
+        al_actual <- nuevos_alumnos
 
       }else{
 
-        guardados$alumnos <- rbind(
-
-          guardados$alumnos,
-
+        al_actual <- rbind(
+          al_actual,
           nuevos_alumnos
         )
       }
 
 
-      #************************************************************
-      #AVERAGES
-
-      nuevos_promedios <- actualiza_promedios(
-
-        guardados$equipos,
-
-        guardados$alumnos,
-
-        alumnos_actuales()
+      datos_equipos(
+        eq_actual
       )
 
 
-      guardados$prom_equipos <- nuevos_promedios$equipos
+      datos_alumnos(
+        al_actual
+      )
 
-      guardados$prom_alumnos <- nuevos_promedios$alumnos
+
+      promedios_local(
+
+        calcular_promedios(
+          eq_actual,
+          al_actual,
+          lista_admin()
+        )
+      )
+
+
+      showNotification(
+
+        paste0(
+          "Calificacion enviada. Equipo ",
+          equipo_actual,
+          ": ",
+          formatC(
+            nota_corta,
+            format = "f",
+            digits = 2
+          ),
+          " / 10"
+        ),
+
+        type = "message",
+
+        duration = 7
+      )
+    }
+  )
+
+
+  #************************************************************************
+  #REFRESH RESULTS
+
+  observeEvent(
+    input$refrescar_resultados,
+    {
+
+      resultado <- tryCatch({
+
+        refrescar_datos()
+
+        TRUE
+
+      },error=function(e){
+
+        showNotification(
+          paste(
+            "No se pudieron actualizar los datos:",
+            e$message
+          ),
+          type = "error",
+          duration = 10
+        )
+
+        FALSE
+      })
+
+
+      if(resultado){
+
+        showNotification(
+          "Resultados actualizados desde Google.",
+          type = "message"
+        )
+      }
+    }
+  )
+
+
+  #************************************************************************
+  #RESULTS TABLE
+
+  output$tabla_promedios <- renderTable({
+
+
+    p <- promedios_local()
+
+
+    if(input$tipo_grafica=="equipos"){
+
+      p$equipos
+
+    }else{
+
+      p$alumnos
+    }
+
+  },digits = 2)
+
+
+  #************************************************************************
+  #GENERAL AVERAGE
+
+  obtener_promedio_general <- reactive({
+
+
+    p <- promedios_local()
+
+
+    if(input$tipo_grafica=="equipos"){
+
+      datos <- p$equipos
+
+
+      if(
+        is.null(datos) ||
+        nrow(datos)==0
+      ){
+
+        return(
+          NA_real_
+        )
+      }
+
+
+      x <- datos[
+        datos$Equipo=="PROMEDIO GENERAL",
+        ,
+        drop = FALSE
+      ]
+
+    }else{
+
+      datos <- p$alumnos
+
+
+      if(
+        is.null(datos) ||
+        nrow(datos)==0
+      ){
+
+        return(
+          NA_real_
+        )
+      }
+
+
+      x <- datos[
+        datos$Alumno=="PROMEDIO GENERAL",
+        ,
+        drop = FALSE
+      ]
+    }
+
+
+    if(
+      nrow(x)==0 ||
+      is.na(x$Nota_Corta[1])
+    ){
+
+      return(
+        NA_real_
+      )
+    }
+
+
+    as.numeric(
+      x$Nota_Corta[1]
+    )
+  })
+
+
+  output$promedio_general <- renderText({
+
+
+    x <- obtener_promedio_general()
+
+
+    if(is.na(x)){
+
+      return(
+        "Sin calificaciones"
+      )
+    }
+
+
+    paste0(
+      formatC(
+        x,
+        format = "f",
+        digits = 2
+      ),
+      " / 10"
+    )
+  })
+
+
+  #************************************************************************
+  #SHORT VS LONG CHECK
+
+  output$comparacion_rubricas <- renderTable({
+
+
+    x <- obtener_promedio_general()
+
+
+    if(is.na(x)){
+
+      return(
+
+        data.frame(
+          Rubrica = c(
+            "Corta",
+            "Larga"
+          ),
+          Promedio = c(
+            NA_real_,
+            NA_real_
+          )
+        )
+      )
+    }
+
+
+    data.frame(
+
+      Rubrica = c(
+        "Corta",
+        "Larga"
+      ),
+
+      Promedio = c(
+        x,
+        x
+      ),
+
+      check.names = FALSE
+    )
+
+  },digits = 2)
+
+
+  #************************************************************************
+  #GRAPH
+
+  output$grafica <- renderPlot({
+
+
+    p <- promedios_local()
+
+
+    if(input$tipo_grafica=="equipos"){
+
+      datos <- p$equipos
+
+
+      if(
+        is.null(datos) ||
+        nrow(datos)==0
+      ){
+
+        plot.new()
+
+        text(
+          0.5,
+          0.5,
+          "Sin calificaciones"
+        )
+
+        return()
+      }
+
+
+      datos <- datos[
+        datos$Equipo!="PROMEDIO GENERAL",
+        ,
+        drop = FALSE
+      ]
+
+
+      etiquetas <- datos$Equipo
+
+    }else{
+
+      datos <- p$alumnos
+
+
+      if(
+        is.null(datos) ||
+        nrow(datos)==0
+      ){
+
+        plot.new()
+
+        text(
+          0.5,
+          0.5,
+          "Sin calificaciones"
+        )
+
+        return()
+      }
+
+
+      datos <- datos[
+        datos$Alumno!="PROMEDIO GENERAL",
+        ,
+        drop = FALSE
+      ]
+
+
+      etiquetas <- datos$Alumno
+    }
+
+
+    if(nrow(datos)==0){
+
+      plot.new()
+
+      text(
+        0.5,
+        0.5,
+        "Sin calificaciones"
+      )
+
+      return()
+    }
+
+
+    criterio <- input$criterio_grafica
+
+
+    valores <- suppressWarnings(
+      as.numeric(
+        datos[[criterio]]
+      )
+    )
+
+
+    valores_plot <- valores
+
+    valores_plot[
+      is.na(valores_plot)
+    ] <- 0
+
+
+    barplot(
+
+      valores_plot,
+
+      names.arg = etiquetas,
+
+      las = 2,
+
+      ylim = c(
+        0,
+        10
+      ),
+
+      ylab = "Calificacion",
+
+      main = "Resultados"
+    )
+
+
+    abline(
+      h = seq(
+        0,
+        10,
+        1
+      ),
+      lty = 3
+    )
+  })
+
+
+  #************************************************************************
+  #ADMIN UI
+
+  output$admin_ui <- renderUI({
+
+
+    if(!admin_ok()){
+
+
+      return(
+
+        tagList(
+
+          h4(
+            "Acceso de administracion"
+          ),
+
+
+          tags$p(
+            "Solo el profesor Montufar tiene acceso a esta seccion mediante su contraseña."
+          ),
+
+
+          passwordInput(
+            "admin_password",
+            "Contraseña:"
+          ),
+
+
+          actionButton(
+            "login_admin",
+            "Entrar",
+            icon = icon("sign-in")
+          )
+        )
+      )
+    }
+
+
+    lista <- lista_admin()
+
+
+    opciones_alumnos <- if(
+      nrow(lista)>0
+    ){
+
+      setNames(
+
+        seq_len(
+          nrow(lista)
+        ),
+
+        paste0(
+          lista$Equipo,
+          " - ",
+          lista$Alumno,
+          " [",
+          lista$Activo,
+          "]"
+        )
+      )
+
+    }else{
+
+      character()
+    }
+
+
+    tagList(
+
+      fluidRow(
+
+        column(
+
+          width = 9,
+
+          h3(
+            semestre
+          ),
+
+          tags$p(
+            "Administracion central de alumnos, rubricas y Google Sheets."
+          )
+        ),
+
+
+        column(
+
+          width = 3,
+
+          actionButton(
+            "cerrar_admin",
+            "Cerrar administracion",
+            icon = icon("sign-out")
+          )
+        )
+      ),
+
+
+      tabsetPanel(
+
+        tabPanel(
+
+          "Alumnos",
+
+
+          br(),
+
+
+          fluidRow(
+
+            column(
+
+              width = 6,
+
+
+              h4(
+                "Cargar lista"
+              ),
+
+
+              fileInput(
+
+                "archivo_lista",
+
+                "Archivo .xlsx, .xls o .csv",
+
+                accept = c(
+                  ".xlsx",
+                  ".xls",
+                  ".csv"
+                )
+              ),
+
+
+              actionButton(
+                "cargar_lista",
+                "Reemplazar lista del semestre",
+                icon = icon("upload")
+              ),
+
+
+              tags$small(
+                "El archivo debe contener Equipo y Alumno. Activo es opcional."
+              )
+            ),
+
+
+            column(
+
+              width = 6,
+
+
+              h4(
+                "Agregar alumno"
+              ),
+
+
+              textInput(
+                "nuevo_equipo",
+                "Equipo:"
+              ),
+
+
+              textInput(
+                "nuevo_alumno",
+                "Alumno:"
+              ),
+
+
+              actionButton(
+                "agregar_alumno",
+                "Agregar",
+                icon = icon("plus")
+              )
+            )
+          ),
+
+
+          hr(),
+
+
+          h4(
+            "Activar / desactivar alumno"
+          ),
+
+
+          selectInput(
+
+            "alumno_admin",
+
+            "Alumno:",
+
+            choices = opciones_alumnos
+          ),
+
+
+          actionButton(
+            "desactivar_alumno",
+            "Desactivar",
+            icon = icon("ban")
+          ),
+
+
+          actionButton(
+            "activar_alumno",
+            "Activar",
+            icon = icon("check")
+          ),
+
+
+          hr(),
+
+
+          tableOutput(
+            "tabla_lista_admin"
+          )
+        ),
+
+
+        tabPanel(
+
+          "Rubricas",
+
+
+          br(),
+
+
+          h4(
+            "Rubrica corta"
+          ),
+
+
+          tags$p(
+            "Esta es la rubrica que los profesores evaluadores califican."
+          ),
+
+
+          tableOutput(
+            "tabla_rubrica_corta"
+          ),
+
+
+          hr(),
+
+
+          h4(
+            "Rubrica larga P.C. + U.T."
+          ),
+
+
+          tags$p(
+            "Los criterios largos se derivan de la rubrica corta. La Nota_Larga siempre es igual a Nota_Corta."
+          ),
+
+
+          tableOutput(
+            "tabla_rubrica_larga"
+          )
+        ),
+
+
+        tabPanel(
+
+          "Google / Mantenimiento",
+
+
+          br(),
+
+
+          tags$p(
+            strong(
+              "Los tres Google Sheets fueron creados con la cuenta del profesor Montufar."
+            )
+          ),
+
+
+          tags$p(
+            "La aplicacion usa la autorizacion guardada de marco.montufar14@gmail.com."
+          ),
+
+
+          tags$p(
+            "Estos enlaces son para que Montufar pueda abrir directamente sus archivos en Google Drive."
+          ),
+
+
+          tags$ul(
+
+            tags$li(
+
+              tags$a(
+                href = google_admin_url,
+                target = "_blank",
+                "Administracion Rubricas UAEH"
+              )
+            ),
+
+
+            tags$li(
+
+              tags$a(
+                href = google_equipos_url,
+                target = "_blank",
+                "Evaluaciones Rubricas UAEH - Equipos"
+              )
+            ),
+
+
+            tags$li(
+
+              tags$a(
+                href = google_alumnos_url,
+                target = "_blank",
+                "Evaluaciones Rubricas UAEH - Alumnos"
+              )
+            )
+          ),
+
+
+          hr(),
+
+
+          actionButton(
+            "refrescar_admin",
+            "Actualizar datos desde Google",
+            icon = icon("refresh")
+          ),
+
+
+          br(),
+          br(),
+
+
+          actionButton(
+            "actualizar_derivados",
+            "Actualizar Promedios y Rubrica Larga",
+            icon = icon("calculator"),
+            class = "btn-success"
+          ),
+
+
+          tags$p(
+            "Este boton relee las calificaciones originales y vuelve a generar las hojas derivadas. No modifica las evaluaciones originales."
+          )
+        )
+      )
+    )
+  })
+
+
+  #************************************************************************
+  #ADMIN LOGIN
+
+  observeEvent(
+    input$login_admin,
+    {
+
+
+      if(
+        !is.null(input$admin_password) &&
+        admin_password_ok(
+          input$admin_password
+        )
+      ){
+
+        admin_ok(
+          TRUE
+        )
+
+
+        updateTextInput(
+          session,
+          "admin_password",
+          value = ""
+        )
+
+
+        showNotification(
+          "Acceso concedido.",
+          type = "message"
+        )
+
+      }else{
+
+        showNotification(
+          "Contraseña incorrecta.",
+          type = "error"
+        )
+      }
+    }
+  )
+
+
+  observeEvent(
+    input$cerrar_admin,
+    {
+
+      admin_ok(
+        FALSE
+      )
+
+
+      showNotification(
+        "Administracion cerrada.",
+        type = "message"
+      )
+    }
+  )
+
+
+  #************************************************************************
+  #ADMIN TABLES
+
+  output$tabla_lista_admin <- renderTable({
+
+
+    req(
+      admin_ok()
+    )
+
+
+    lista_admin()
+
+  })
+
+
+  output$tabla_rubrica_corta <- renderTable({
+
+
+    req(
+      admin_ok()
+    )
+
+
+    rubrica[
+      ,
+      c(
+        "Numero",
+        "Aspecto",
+        "Descripcion",
+        "Peso"
+      )
+    ]
+
+  },digits = 2)
+
+
+  output$tabla_rubrica_larga <- renderTable({
+
+
+    req(
+      admin_ok()
+    )
+
+
+    rubrica_larga
+
+  })
+
+
+  #************************************************************************
+  #UPLOAD ROSTER
+
+  observeEvent(
+    input$cargar_lista,
+    {
+
+
+      req(
+        admin_ok()
+      )
+
+
+      if(is.null(input$archivo_lista)){
+
+        showNotification(
+          "Selecciona un archivo.",
+          type = "error"
+        )
+
+        return()
+      }
+
+
+      resultado <- tryCatch({
+
+
+        nueva_lista <- leer_lista_archivo(
+
+          input$archivo_lista$datapath,
+
+          input$archivo_lista$name
+        )
+
+
+        if(nrow(nueva_lista)==0){
+
+          stop(
+            "La lista no contiene alumnos validos."
+          )
+        }
+
+
+        sheet_write(
+
+          nueva_lista,
+
+          ss = google_admin,
+
+          sheet = sheet_lista
+        )
+
+
+        lista_admin(
+          nueva_lista
+        )
+
+
+        alumnos_actuales(
+          lista_activa(
+            nueva_lista
+          )
+        )
+
+
+        promedios_local(
+
+          calcular_promedios(
+            datos_equipos(),
+            datos_alumnos(),
+            nueva_lista
+          )
+        )
+
+
+        TRUE
+
+      },error=function(e){
+
+
+        showNotification(
+
+          paste(
+            "No se pudo cargar la lista:",
+            e$message
+          ),
+
+          type = "error",
+
+          duration = 10
+        )
+
+
+        FALSE
+      })
+
+
+      if(resultado){
+
+        showNotification(
+          "Lista de alumnos actualizada.",
+          type = "message"
+        )
+      }
+    }
+  )
+
+
+  #************************************************************************
+  #ADD STUDENT
+
+  observeEvent(
+    input$agregar_alumno,
+    {
+
+
+      req(
+        admin_ok()
+      )
+
+
+      equipo <- trimws(
+        input$nuevo_equipo
+      )
+
+      alumno <- trimws(
+        input$nuevo_alumno
+      )
+
+
+      if(
+        equipo=="" ||
+        alumno==""
+      ){
+
+        showNotification(
+          "Escribe equipo y nombre del alumno.",
+          type = "error"
+        )
+
+        return()
+      }
+
+
+      lista <- lista_admin()
+
+
+      nueva_fila <- data.frame(
+
+        Equipo = equipo,
+        Alumno = alumno,
+        Activo = "SI",
+
+        stringsAsFactors = FALSE
+      )
+
+
+      lista <- normalizar_lista(
+
+        rbind(
+          lista,
+          nueva_fila
+        )
+      )
+
+
+      resultado <- tryCatch({
+
+
+        sheet_write(
+
+          lista,
+
+          ss = google_admin,
+
+          sheet = sheet_lista
+        )
+
+
+        TRUE
+
+      },error=function(e){
+
+
+        showNotification(
+
+          paste(
+            "No se pudo guardar:",
+            e$message
+          ),
+
+          type = "error",
+
+          duration = 10
+        )
+
+
+        FALSE
+      })
+
+
+      if(!resultado){
+
+        return()
+      }
+
+
+      lista_admin(
+        lista
+      )
+
+
+      alumnos_actuales(
+        lista_activa(
+          lista
+        )
+      )
+
+
+      promedios_local(
+
+        calcular_promedios(
+          datos_equipos(),
+          datos_alumnos(),
+          lista
+        )
+      )
+
+
+      updateTextInput(
+        session,
+        "nuevo_equipo",
+        value = ""
+      )
+
+
+      updateTextInput(
+        session,
+        "nuevo_alumno",
+        value = ""
+      )
+
+
+      showNotification(
+        "Alumno agregado.",
+        type = "message"
+      )
+    }
+  )
+
+
+  #************************************************************************
+  #ACTIVATE / DEACTIVATE
+
+  cambiar_estado_alumno <- function(
+    indice,
+    estado
+  ){
+
+    lista <- lista_admin()
+
+
+    if(
+      length(indice)==0 ||
+      is.na(indice) ||
+      indice < 1 ||
+      indice > nrow(lista)
+    ){
+
+      showNotification(
+        "Selecciona un alumno.",
+        type = "error"
+      )
+
+      return(
+        FALSE
+      )
+    }
+
+
+    lista$Activo[indice] <- estado
+
+
+    resultado <- tryCatch({
+
+
+      sheet_write(
+
+        lista,
+
+        ss = google_admin,
+
+        sheet = sheet_lista
+      )
 
 
       TRUE
-
 
     },error=function(e){
 
@@ -2569,7 +4100,7 @@ server <- function(input,output,session){
       showNotification(
 
         paste(
-          "Google Sheets error:",
+          "No se pudo guardar:",
           e$message
         ),
 
@@ -2585,1367 +4116,394 @@ server <- function(input,output,session){
 
     if(!resultado){
 
-      return()
-    }
-
-
-    showNotification(
-
-      paste0(
-
-        "Calificacion enviada. Equipo ",
-        equipo_actual,
-        ": ",
-        nota_final
-      ),
-
-      type = "message",
-
-      duration = 6
-    )
-
-  })
-
-
-#************************************************************************
-#RESULTS TABLE
-
-  output$tabla_promedios <- renderTable({
-
-
-    if(input$tipo_grafica=="equipos"){
-
-      guardados$prom_equipos
-
-    }else{
-
-      guardados$prom_alumnos
-    }
-
-
-  },digits = 2)
-
-
-#************************************************************************
-#GENERAL AVERAGE
-
-  output$promedio_general <- renderText({
-
-
-    if(input$tipo_grafica=="equipos"){
-
-      datos <- guardados$prom_equipos
-
-
-      if(
-        is.null(datos) ||
-        nrow(datos)==0
-      ){
-
-        return(
-          "Sin calificaciones"
-        )
-      }
-
-
-      x <- datos[
-
-        datos$Equipo == "PROMEDIO GENERAL",
-
-      ]
-
-
-    }else{
-
-
-      datos <- guardados$prom_alumnos
-
-
-      if(
-        is.null(datos) ||
-        nrow(datos)==0
-      ){
-
-        return(
-          "Sin calificaciones"
-        )
-      }
-
-
-      x <- datos[
-
-        datos$Alumno == "PROMEDIO GENERAL",
-
-      ]
-    }
-
-
-    if(
-      nrow(x)==0 ||
-      is.na(x$Nota_Final[1])
-    ){
-
       return(
-        "Sin calificaciones"
+        FALSE
       )
     }
 
 
-    paste0(
-
-      formatC(
-
-        x$Nota_Final[1],
-
-        format = "f",
-
-        digits = 2
-      ),
-
-      " / 100"
+    lista_admin(
+      lista
     )
-
-  })
-
-
-#************************************************************************
-#GRAPH
-
-  output$grafica <- renderPlot({
-
-
-    req(
-      input$tipo_grafica,
-      input$criterio_grafica
-    )
-
-
-    columna <- input$criterio_grafica
-
-
-    #************************************************************************
-    #TEAMS
-
-    if(input$tipo_grafica=="equipos"){
-
-      datos <- guardados$prom_equipos
-
-
-      if(
-        is.null(datos) ||
-        nrow(datos)==0
-      ){
-
-        plot.new()
-
-        text(
-          0.5,
-          0.5,
-          "No hay calificaciones todavia"
-        )
-
-        return()
-      }
-
-
-      datos <- datos[
-
-        datos$Equipo != "PROMEDIO GENERAL",
-
-      ]
-
-
-      datos[[columna]] <- suppressWarnings(
-
-        as.numeric(
-          datos[[columna]]
-        )
-      )
-
-
-      datos <- datos[
-
-        !is.na(
-          datos[[columna]]
-        ),
-
-      ]
-
-
-      if(nrow(datos)==0){
-
-        plot.new()
-
-        text(
-          0.5,
-          0.5,
-          "No hay calificaciones todavia"
-        )
-
-        return()
-      }
-
-
-      barplot(
-
-        datos[[columna]],
-
-        names.arg = paste(
-          "Equipo",
-          datos$Equipo
-        ),
-
-        ylim = c(
-          0,
-          100
-        ),
-
-        main = paste(
-          "Promedio por Equipo -",
-          semestre
-        ),
-
-        xlab = "Equipo",
-
-        ylab = "Calificacion"
-      )
-
-
-      abline(
-
-        h = mean(
-
-          datos[[columna]],
-
-          na.rm = TRUE
-        ),
-
-        lty = 2,
-
-        lwd = 2
-      )
-    }
-
-
-    #************************************************************************
-    #STUDENTS
-
-    if(input$tipo_grafica=="alumnos"){
-
-      datos <- guardados$prom_alumnos
-
-
-      if(
-        is.null(datos) ||
-        nrow(datos)==0
-      ){
-
-        plot.new()
-
-        text(
-          0.5,
-          0.5,
-          "No hay calificaciones todavia"
-        )
-
-        return()
-      }
-
-
-      datos <- datos[
-
-        datos$Alumno != "PROMEDIO GENERAL",
-
-      ]
-
-
-      datos[[columna]] <- suppressWarnings(
-
-        as.numeric(
-          datos[[columna]]
-        )
-      )
-
-
-      datos <- datos[
-
-        !is.na(
-          datos[[columna]]
-        ),
-
-      ]
-
-
-      if(nrow(datos)==0){
-
-        plot.new()
-
-        text(
-          0.5,
-          0.5,
-          "No hay calificaciones todavia"
-        )
-
-        return()
-      }
-
-
-      par(
-
-        mar = c(
-          5,
-          12,
-          4,
-          2
-        )
-      )
-
-
-      barplot(
-
-        datos[[columna]],
-
-        names.arg = datos$Alumno,
-
-        horiz = TRUE,
-
-        las = 1,
-
-        xlim = c(
-          0,
-          100
-        ),
-
-        main = paste(
-          "Promedio por Alumno -",
-          semestre
-        ),
-
-        xlab = "Calificacion"
-      )
-
-
-      abline(
-
-        v = mean(
-
-          datos[[columna]],
-
-          na.rm = TRUE
-        ),
-
-        lty = 2,
-
-        lwd = 2
-      )
-    }
-
-  })
-
-
-#************************************************************************
-#ADMIN UI
-
-  output$admin_ui <- renderUI({
-
-
-    if(!admin_ok()){
-
-
-      tagList(
-
-
-        h4(
-          "Acceso del profesor encargado"
-        ),
-
-
-        passwordInput(
-
-          "admin_password",
-
-          "Contraseña:"
-        ),
-
-
-        actionButton(
-
-          "login_admin",
-
-          "Entrar",
-
-          icon = icon("unlock")
-        )
-
-      )
-
-
-    }else{
-
-
-      lista <- alumnos_actuales()
-
-
-      opciones <- character()
-
-
-      if(nrow(lista)>0){
-
-        opciones <- setNames(
-
-          as.character(
-            1:nrow(lista)
-          ),
-
-          paste(
-
-            lista$Equipo,
-
-            "-",
-
-            lista$Alumno
-          )
-        )
-      }
-
-
-      tagList(
-
-
-        h3(
-          semestre
-        ),
-
-
-        tabsetPanel(
-
-          id = "admin_tabs",
-
-
-          #************************************************************
-          #STUDENTS
-
-          tabPanel(
-
-            "Alumnos",
-
-            br(),
-
-
-            tags$p(
-
-              "Los alumnos pueden editarse desde aqui o directamente en Google Sheets."
-            ),
-
-
-            hr(),
-
-
-            h4(
-              "Cargar lista completa"
-            ),
-
-
-            tags$p(
-
-              "El archivo debe tener las columnas Equipo y Alumno. Activo es opcional."
-            ),
-
-
-            fileInput(
-
-              "archivo_alumnos",
-
-              "Archivo Excel o CSV:",
-
-              accept = c(
-
-                ".xlsx",
-
-                ".xls",
-
-                ".csv"
-              )
-
-            ),
-
-
-            actionButton(
-
-              "guardar_lista",
-
-              "Reemplazar lista del semestre",
-
-              icon = icon("upload"),
-
-              class = "btn-success"
-            ),
-
-
-            hr(),
-
-
-            h4(
-              "Agregar alumno"
-            ),
-
-
-            textInput(
-
-              "admin_equipo",
-
-              "Equipo:"
-            ),
-
-
-            textInput(
-
-              "admin_alumno",
-
-              "Nombre del alumno:"
-            ),
-
-
-            actionButton(
-
-              "agregar_alumno",
-
-              "Agregar",
-
-              icon = icon("plus")
-            ),
-
-
-            hr(),
-
-
-            h4(
-              "Desactivar alumno"
-            ),
-
-
-            selectInput(
-
-              "quitar_alumno",
-
-              "Alumno:",
-
-              choices = opciones
-            ),
-
-
-            actionButton(
-
-              "desactivar_alumno",
-
-              "Desactivar",
-
-              icon = icon("times")
-            ),
-
-
-            hr(),
-
-
-            h4(
-              "Google Sheets"
-            ),
-
-
-            tags$a(
-
-              href = google_config_url,
-
-              target = "_blank",
-
-              class = "btn btn-primary",
-
-              icon("table"),
-
-              " Administracion"
-            ),
-
-
-            HTML("&nbsp;"),
-
-
-            tags$a(
-
-              href = google_equipos_url,
-
-              target = "_blank",
-
-              class = "btn btn-primary",
-
-              icon("users"),
-
-              " Equipos"
-            ),
-
-
-            HTML("&nbsp;"),
-
-
-            tags$a(
-
-              href = google_alumnos_url,
-
-              target = "_blank",
-
-              class = "btn btn-primary",
-
-              icon("user"),
-
-              " Alumnos"
-            ),
-
-
-            br(),
-            br(),
-
-
-            actionButton(
-
-              "reload_alumnos",
-
-              "Recargar desde Google Sheets",
-
-              icon = icon("refresh")
-            ),
-
-
-            hr(),
-
-
-            h4(
-              "Lista actual"
-            ),
-
-
-            tableOutput(
-              "lista_actual"
-            ),
-
-
-            hr(),
-
-
-            h4(
-              "Vista previa del archivo"
-            ),
-
-
-            tableOutput(
-              "preview_lista"
-            )
-
-          ),
-
-
-          #************************************************************
-          #SHORT RUBRIC
-
-          tabPanel(
-
-            "Rubrica corta",
-
-            br(),
-
-
-            h3(
-              "Rubrica corta"
-            ),
-
-
-            tags$p(
-
-              "Rubrica resumida de cinco aspectos."
-            ),
-
-
-            tableOutput(
-              "tabla_rubrica_corta"
-            ),
-
-
-            hr(),
-
-
-            tags$strong(
-              "Total: 100%"
-            )
-
-          ),
-
-
-          #************************************************************
-          #LONG RUBRIC
-
-          tabPanel(
-
-            "Rubrica larga",
-
-            br(),
-
-
-            h3(
-              "Rubrica larga"
-            ),
-
-
-            tags$p(
-
-              "Criterios P.C. y U.T. y su relacion con la rubrica corta."
-            ),
-
-
-            tableOutput(
-              "tabla_rubrica_larga"
-            ),
-
-
-            hr(),
-
-
-            tags$p(
-
-              tags$strong(
-                "Nota:"
-              ),
-
-              "Calidad y funcionamiento del prototipo y Comunicacion y trabajo en equipo no tienen una equivalencia directa identificada dentro de P.C. / U.T."
-
-            )
-
-          )
-
-        ),
-
-
-        br(),
-
-
-        actionButton(
-
-          "logout_admin",
-
-          "Cerrar sesion",
-
-          icon = icon("sign-out")
-        )
-
-      )
-
-    }
-
-  })
-
-
-#************************************************************************
-#RUBRIC TABLES ADMIN
-
-  output$tabla_rubrica_corta <- renderTable({
-
-
-    req(
-      admin_ok()
-    )
-
-
-    data.frame(
-
-      No = rubrica_corta$Numero,
-
-      Aspecto = rubrica_corta$Aspecto,
-
-      `Peso (%)` = rubrica_corta$Peso,
-
-      Descripcion = rubrica_corta$Descripcion,
-
-      check.names = FALSE
-
-    )
-
-
-  },digits = 2)
-
-
-  output$tabla_rubrica_larga <- renderTable({
-
-
-    req(
-      admin_ok()
-    )
-
-
-    data.frame(
-
-      No = rubrica_larga$Numero,
-
-      Rubrica = rubrica_larga$Rubrica,
-
-      Aspecto = rubrica_larga$Aspecto,
-
-      `Pertenece a rubrica corta` = rubrica_larga$Relacion_Corta,
-
-      check.names = FALSE
-
-    )
-
-
-  },digits = 2)
-
-
-#************************************************************************
-#ADMIN LOGIN
-
-  observeEvent(input$login_admin,{
-
-
-    password_real <- Sys.getenv(
-      "ADMIN_PASSWORD"
-    )
-
-
-    if(password_real==""){
-
-      showNotification(
-
-        "Falta configurar ADMIN_PASSWORD.",
-
-        type = "error"
-      )
-
-      return()
-    }
-
-
-    if(input$admin_password == password_real){
-
-      admin_ok(
-        TRUE
-      )
-
-
-      showNotification(
-
-        "Acceso concedido.",
-
-        type = "message"
-      )
-
-
-    }else{
-
-
-      showNotification(
-
-        "Contraseña incorrecta.",
-
-        type = "error"
-      )
-
-    }
-
-  })
-
-
-  observeEvent(input$logout_admin,{
-
-    admin_ok(
-      FALSE
-    )
-
-  })
-
-
-#************************************************************************
-#ADMIN FILE
-
-  lista_subida <- reactive({
-
-
-    req(
-      input$archivo_alumnos
-    )
-
-
-    tryCatch({
-
-
-      leer_lista(
-
-        input$archivo_alumnos$datapath,
-
-        input$archivo_alumnos$name
-      )
-
-
-    },error=function(e){
-
-
-      data.frame(
-
-        Error = e$message
-      )
-
-    })
-
-  })
-
-
-  output$preview_lista <- renderTable({
-
-
-    req(
-      admin_ok()
-    )
-
-
-    if(is.null(input$archivo_alumnos)){
-
-      return(
-        NULL
-      )
-    }
-
-
-    head(
-
-      lista_subida(),
-
-      20
-    )
-
-  })
-
-
-  output$lista_actual <- renderTable({
-
-
-    req(
-      admin_ok()
-    )
-
-
-    alumnos_actuales()
-
-  })
-
-
-#************************************************************************
-#REFRESH STUDENTS
-
-  recargar_alumnos <- function(){
-
-
-    nueva <- get_alumnos()
 
 
     alumnos_actuales(
-      nueva
+      lista_activa(
+        lista
+      )
     )
 
 
-    nuevos_promedios <- actualiza_promedios(
+    promedios_local(
 
-      guardados$equipos,
-
-      guardados$alumnos,
-
-      nueva
+      calcular_promedios(
+        datos_equipos(),
+        datos_alumnos(),
+        lista
+      )
     )
 
 
-    guardados$prom_equipos <- nuevos_promedios$equipos
-
-    guardados$prom_alumnos <- nuevos_promedios$alumnos
-
+    TRUE
   }
 
 
-  observeEvent(input$reload_alumnos,{
+  observeEvent(
+    input$desactivar_alumno,
+    {
 
 
-    if(!admin_ok()){
-
-      return()
-    }
-
-
-    recargar_alumnos()
-
-
-    showNotification(
-
-      "Lista actualizada desde Google Sheets.",
-
-      type = "message"
-    )
-
-  })
-
-
-#************************************************************************
-#UPLOAD LIST
-
-  observeEvent(input$guardar_lista,{
-
-
-    if(!admin_ok()){
-
-      return()
-    }
-
-
-    nueva <- lista_subida()
-
-
-    if("Error" %in% names(nueva)){
-
-      showNotification(
-
-        nueva$Error[1],
-
-        type = "error"
-      )
-
-      return()
-    }
-
-
-    if(nrow(nueva)==0){
-
-      showNotification(
-
-        "El archivo no contiene alumnos.",
-
-        type = "error"
-      )
-
-      return()
-    }
-
-
-    resultado <- tryCatch({
-
-
-      sheet_write(
-
-        nueva,
-
-        ss = google_config,
-
-        sheet = semestre
+      req(
+        admin_ok()
       )
 
 
-      TRUE
-
-
-    },error=function(e){
-
-
-      showNotification(
-
-        paste(
-          "Google Sheets error:",
-          e$message
-        ),
-
-        type = "error"
+      indice <- suppressWarnings(
+        as.integer(
+          input$alumno_admin
+        )
       )
 
 
-      FALSE
-    })
+      if(
+        cambiar_estado_alumno(
+          indice,
+          "NO"
+        )
+      ){
 
-
-    if(!resultado){
-
-      return()
+        showNotification(
+          "Alumno desactivado.",
+          type = "message"
+        )
+      }
     }
+  )
 
 
-    recargar_alumnos()
+  observeEvent(
+    input$activar_alumno,
+    {
 
 
-    showNotification(
-
-      paste(
-
-        nrow(nueva),
-
-        "alumnos cargados para",
-        semestre
-      ),
-
-      type = "message"
-    )
-
-  })
-
-
-#************************************************************************
-#ADD STUDENT
-
-  observeEvent(input$agregar_alumno,{
-
-
-    if(!admin_ok()){
-
-      return()
-    }
-
-
-    equipo <- trimws(
-      input$admin_equipo
-    )
-
-
-    alumno <- trimws(
-      input$admin_alumno
-    )
-
-
-    if(
-      equipo=="" ||
-      alumno==""
-    ){
-
-      showNotification(
-
-        "Escribe equipo y alumno.",
-
-        type = "error"
+      req(
+        admin_ok()
       )
 
-      return()
-    }
 
-
-    lista_completa <- read_old(
-
-      google_config,
-
-      semestre
-    )
-
-
-    if(nrow(lista_completa)==0){
-
-      lista_completa <- empty_lista
-    }
-
-
-    if(!("Activo" %in% names(lista_completa))){
-
-      lista_completa$Activo <- rep(
-
-        "SI",
-
-        nrow(lista_completa)
+      indice <- suppressWarnings(
+        as.integer(
+          input$alumno_admin
+        )
       )
+
+
+      if(
+        cambiar_estado_alumno(
+          indice,
+          "SI"
+        )
+      ){
+
+        showNotification(
+          "Alumno activado.",
+          type = "message"
+        )
+      }
     }
+  )
 
 
-    existe <- which(
+  #************************************************************************
+  #ADMIN REFRESH
 
-      trimws(
+  observeEvent(
+    input$refrescar_admin,
+    {
 
-        as.character(
-          lista_completa$Equipo
+
+      req(
+        admin_ok()
+      )
+
+
+      resultado <- tryCatch({
+
+        refrescar_datos()
+
+        TRUE
+
+      },error=function(e){
+
+        showNotification(
+          paste(
+            "No se pudieron actualizar los datos:",
+            e$message
+          ),
+          type = "error",
+          duration = 10
         )
 
-      ) == equipo &
+        FALSE
+      })
 
-      trimws(
 
-        as.character(
-          lista_completa$Alumno
+      if(resultado){
+
+        showNotification(
+          "Datos actualizados desde Google.",
+          type = "message"
+        )
+      }
+    }
+  )
+
+
+  #************************************************************************
+  #REBUILD DERIVED SHEETS
+  #
+  #The original short evaluations are never rewritten here.
+  #Promedios and Rubrica Larga are rebuilt from the original rows.
+  #************************************************************************
+
+  observeEvent(
+    input$actualizar_derivados,
+    {
+
+
+      req(
+        admin_ok()
+      )
+
+
+      resultado <- tryCatch({
+
+
+        withProgress(
+
+          message = "Actualizando hojas derivadas...",
+
+          value = 0.1,
+
+          {
+
+
+            #always reread original evaluations first
+            eq <- read_table(
+              google_equipos,
+              sheet_cal_equipos,
+              empty_equipos
+            )
+
+
+            al <- read_table(
+              google_alumnos,
+              sheet_cal_alumnos,
+              empty_alumnos
+            )
+
+
+            lista <- normalizar_lista(
+
+              read_table(
+                google_admin,
+                sheet_lista,
+                empty_lista
+              )
+            )
+
+
+            incProgress(
+              0.2
+            )
+
+
+            p <- calcular_promedios(
+              eq,
+              al,
+              lista
+            )
+
+
+            sheet_write(
+
+              p$equipos,
+
+              ss = google_equipos,
+
+              sheet = sheet_prom_equipos
+            )
+
+
+            incProgress(
+              0.15
+            )
+
+
+            sheet_write(
+
+              p$alumnos,
+
+              ss = google_alumnos,
+
+              sheet = sheet_prom_alumnos
+            )
+
+
+            incProgress(
+              0.15
+            )
+
+
+            largo_eq <- convertir_larga_equipos(
+              eq
+            )
+
+
+            largo_al <- convertir_larga_alumnos(
+              al
+            )
+
+
+            #this enforces equality again
+            if(nrow(largo_eq)>0){
+
+              largo_eq$Nota_Larga <- largo_eq$Nota_Corta
+            }
+
+
+            if(nrow(largo_al)>0){
+
+              largo_al$Nota_Larga <- largo_al$Nota_Corta
+            }
+
+
+            sheet_write(
+
+              largo_eq,
+
+              ss = google_equipos,
+
+              sheet = sheet_larga_equipos
+            )
+
+
+            incProgress(
+              0.15
+            )
+
+
+            sheet_write(
+
+              largo_al,
+
+              ss = google_alumnos,
+
+              sheet = sheet_larga_alumnos
+            )
+
+
+            incProgress(
+              0.15
+            )
+
+
+            #also update rubric reference tabs
+            sheet_write(
+
+              rubrica,
+
+              ss = google_admin,
+
+              sheet = "Rubrica Corta"
+            )
+
+
+            sheet_write(
+
+              rubrica_larga,
+
+              ss = google_admin,
+
+              sheet = "Rubrica Larga"
+            )
+
+
+            #local state
+            lista_admin(
+              lista
+            )
+
+
+            alumnos_actuales(
+              lista_activa(
+                lista
+              )
+            )
+
+
+            datos_equipos(
+              eq
+            )
+
+
+            datos_alumnos(
+              al
+            )
+
+
+            promedios_local(
+              p
+            )
+          }
         )
 
-      ) == alumno
 
-    )
+        TRUE
 
-
-    if(length(existe)>0){
-
-      lista_completa$Activo[existe] <- "SI"
+      },error=function(e){
 
 
-    }else{
+        showNotification(
 
+          paste(
+            "No se pudieron actualizar las hojas:",
+            e$message
+          ),
 
-      lista_completa <- rbind(
+          type = "error",
 
-        lista_completa,
-
-        data.frame(
-
-          Equipo = equipo,
-
-          Alumno = alumno,
-
-          Activo = "SI",
-
-          stringsAsFactors = FALSE
+          duration = 12
         )
 
-      )
 
-    }
-
-
-    sheet_write(
-
-      lista_completa,
-
-      ss = google_config,
-
-      sheet = semestre
-    )
+        FALSE
+      })
 
 
-    recargar_alumnos()
+      if(resultado){
 
+        showNotification(
 
-    showNotification(
+          paste0(
+            "Promedios y rubrica larga actualizados. ",
+            "Nota larga = nota corta."
+          ),
 
-      "Alumno agregado.",
+          type = "message",
 
-      type = "message"
-    )
-
-  })
-
-
-#************************************************************************
-#DEACTIVATE STUDENT
-
-  observeEvent(input$desactivar_alumno,{
-
-
-    if(!admin_ok()){
-
-      return()
-    }
-
-
-    lista <- alumnos_actuales()
-
-
-    if(
-      nrow(lista)==0 ||
-      is.null(input$quitar_alumno) ||
-      input$quitar_alumno==""
-    ){
-
-      return()
-    }
-
-
-    idx <- suppressWarnings(
-
-      as.integer(
-        input$quitar_alumno
-      )
-
-    )
-
-
-    if(
-      is.na(idx) ||
-      idx > nrow(lista)
-    ){
-
-      return()
-    }
-
-
-    target_equipo <- lista$Equipo[idx]
-
-    target_alumno <- lista$Alumno[idx]
-
-
-    lista_completa <- read_old(
-
-      google_config,
-
-      semestre
-    )
-
-
-    if(!("Activo" %in% names(lista_completa))){
-
-      lista_completa$Activo <- rep(
-
-        "SI",
-
-        nrow(lista_completa)
-      )
-    }
-
-
-    fila <- which(
-
-      trimws(
-
-        as.character(
-          lista_completa$Equipo
+          duration = 8
         )
-
-      ) == trimws(
-        target_equipo
-      ) &
-
-      trimws(
-
-        as.character(
-          lista_completa$Alumno
-        )
-
-      ) == trimws(
-        target_alumno
-      )
-
-    )
-
-
-    if(length(fila)>0){
-
-      lista_completa$Activo[fila] <- "NO"
-
-
-      sheet_write(
-
-        lista_completa,
-
-        ss = google_config,
-
-        sheet = semestre
-      )
-
-
-      recargar_alumnos()
-
-
-      showNotification(
-
-        "Alumno desactivado.",
-
-        type = "message"
-      )
-
+      }
     }
-
-  })
-
+  )
 }
 
 
+#************************************************************************
+#RUN
+
 shinyApp(
-  ui,
-  server
+  ui = ui,
+  server = server
 )
