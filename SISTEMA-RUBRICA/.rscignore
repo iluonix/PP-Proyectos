@@ -1,0 +1,8 @@
+.Rproj.user
+SISTEMA-RUBRICA.Rproj
+README.md
+private/google-drive-token
+private/configuracion-pendiente.rds
+private/reinicio-pendiente.rds
+private/configuracion.lock
+private/arranque-rstudio.rds
