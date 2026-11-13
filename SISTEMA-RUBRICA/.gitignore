@@ -1,0 +1,20 @@
+# R / RStudio
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# Credenciales y configuración local: NO SUBIR A GITHUB
+private/
+.Renviron
+.httr-oauth
+.secrets/
+.google_token/
+*.pem
+service-account.json
+google_config_id.txt
+google_sheet_equipos_id.txt
+google_sheet_alumnos_id.txt
+
+# Datos de publicación locales
+rsconnect/
